@@ -1,98 +1,113 @@
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
-import { signOut } from '@/lib/actions/auth'; // Import the sign out action
-import { Button } from '@/components/ui/button'; // Import Button
-import { checkUserConnectionStatus } from '@/lib/actions/githubConnections'; // Import the action
-import ConnectRepoPrompt from '@/components/ConnectRepoPrompt'; // Import the actual component
-import SelectRepoPrompt from '@/components/SelectRepoPrompt'; // Import the actual component
-// Import Resizable components
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { signOut } from '@/lib/actions/auth';
+import { Button } from '@/components/ui/button';
+import { checkUserConnectionStatus, ConnectionStatus } from '@/lib/actions/githubConnections';
+import ConnectRepoPrompt from '@/components/ConnectRepoPrompt';
+import SelectRepoPrompt from '@/components/SelectRepoPrompt';
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-} from "@/components/ui/resizable"
-// Import placeholder UI components
+} from "@/components/ui/resizable";
 import FileTree from '@/components/FileTree';
 import Editor from '@/components/Editor';
+import { Skeleton } from '@/components/ui/skeleton';
 
-export default async function NotesPage() {
-  const supabase = createClient();
+export default function NotesPage() {
+  const [connection, setConnection] = useState<ConnectionStatus | null>(null);
+  const [isLoadingConnection, setIsLoadingConnection] = useState(true);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [currentFileSha, setCurrentFileSha] = useState<string | null>(null);
+  const router = useRouter();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  useEffect(() => {
+    async function fetchConnectionStatus() {
+      setIsLoadingConnection(true);
+      try {
+        const status = await checkUserConnectionStatus();
+        setConnection(status);
+      } catch (error) {
+        console.error("Failed to fetch connection status:", error);
+        setConnection({ status: 'NO_CONNECTION' });
+      } finally {
+        setIsLoadingConnection(false);
+      }
+    }
+    fetchConnectionStatus();
+  }, []);
 
-  if (!user) {
-    redirect('/'); // Redirect to login page if not authenticated
-  }
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
+  };
 
-  // Call the action to get the actual connection status
-  const connection = await checkUserConnectionStatus(); 
+  const handleFileSelect = (filePath: string) => {
+    setSelectedFilePath(filePath);
+    setCurrentFileSha(null);
+  };
 
-  // Prepare installationId for potential use (cleaner than accessing directly multiple times)
-  let installationId: number | undefined;
-  if (connection.status === 'CONNECTION_NO_REPO' || connection.status === 'CONNECTED') {
-    installationId = connection.installationId;
-  }
+  const handleContentLoaded = (sha: string) => {
+    setCurrentFileSha(sha);
+  };
 
-  // Move the main layout logic outside the return for clarity
-  let content: React.ReactNode;
-
-  if (connection.status === 'NO_CONNECTION') {
-    content = (
-      <div className="flex items-center justify-center h-full">
-         <div className="w-full max-w-md p-6 border rounded-lg shadow-sm bg-card text-card-foreground">
-           <ConnectRepoPrompt />
-         </div>
-      </div>
-     );
-  } else if (connection.status === 'CONNECTION_NO_REPO') {
-     content = (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-full max-w-md p-6 border rounded-lg shadow-sm bg-card text-card-foreground">
-          <SelectRepoPrompt installationId={connection.installationId} />
+  if (isLoadingConnection) {
+    return (
+      <div className="flex flex-col h-screen">
+        <header className="flex justify-between items-center p-4 border-b">
+          <h1 className="text-xl font-bold">GitNote</h1>
+          <Skeleton className="h-8 w-20" />
+        </header>
+        <div className="flex flex-grow p-4">
+          <Skeleton className="w-64 h-full mr-4" />
+          <Skeleton className="flex-grow h-full" />
         </div>
-       </div>
-     );
-  } else { // CONNECTED status
-    content = (
-      <ResizablePanelGroup direction="horizontal" className="h-full max-h-screen rounded-lg border">
-        <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
-          {/* File Tree Panel */}
-          <div className="flex h-full items-center justify-center">
-            <FileTree />
-          </div>
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={75} minSize={30}>
-          {/* Editor Panel */}
-          <div className="flex h-full items-center justify-center">
-             <Editor />
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+      </div>
     );
   }
 
-  return (
-    // Use full screen height and width for the main layout container
-    <div className="h-screen w-screen flex flex-col">
-      {/* Optional: Add a header/navbar here later */}
-      {/* <header>...</header> */}
-      
-      {/* Main content area fills remaining space */}
-      <main className="flex-grow overflow-hidden"> 
-        {content} 
-      </main>
+  if (connection?.status === 'NO_CONNECTION') {
+    return <ConnectRepoPrompt />;
+  }
 
-      {/* Temporary Sign Out button location if needed during dev */}
-      {connection.status === 'CONNECTED' && (
-          <div className="absolute bottom-4 right-4">
-            <form action={signOut}> 
-                <Button type="submit" variant="outline" size="sm">
-                    Sign Out
-                </Button>
-            </form>
-          </div>
-       )}
-    </div>
-  );
+  if (connection?.status === 'CONNECTION_NO_REPO') {
+    return <SelectRepoPrompt installationId={connection.installationId} />;
+  }
+
+  if (connection?.status === 'CONNECTED') {
+    return (
+      <div className="flex flex-col h-screen">
+        <header className="flex justify-between items-center p-4 border-b">
+          <h1 className="text-xl font-bold">GitNote - {connection.repoFullName}</h1>
+          <form action={handleSignOut}>
+            <Button type="submit" variant="outline">Sign Out</Button>
+          </form>
+        </header>
+        <ResizablePanelGroup direction="horizontal" className="flex-grow">
+          <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
+            <div className="h-full overflow-auto p-2">
+              <FileTree
+                selectedFilePath={selectedFilePath}
+                onFileSelect={handleFileSelect}
+              />
+            </div>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={75}>
+            <div className="h-full">
+              <Editor
+                selectedFilePath={selectedFilePath}
+                currentFileSha={currentFileSha}
+                onContentLoaded={handleContentLoaded}
+              />
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
+    );
+  }
+
+  return <div>Loading or unexpected state...</div>;
 } 

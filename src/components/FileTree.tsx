@@ -5,11 +5,17 @@ import { getFileTree, type FileTreeItem } from '@/lib/actions/githubApi';
 import { Skeleton } from "@/components/ui/skeleton";
 import { File, Folder } from 'lucide-react'; // Import icons
 
-export default function FileTree() {
+// Define props interface
+interface FileTreeProps {
+  selectedFilePath: string | null;
+  onFileSelect: (filePath: string) => void;
+}
+
+// Accept props
+export default function FileTree({ selectedFilePath, onFileSelect }: FileTreeProps) {
   const [treeData, setTreeData] = useState<FileTreeItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null); // Track selected file path
 
   useEffect(() => {
     async function loadInitialTree() {
@@ -30,9 +36,8 @@ export default function FileTree() {
   }, []); // Run only on initial mount
 
   const handleFileClick = (path: string) => {
-    setSelectedPath(path);
-    // TODO: Add logic to notify parent component/context about selection
-    console.log("Selected file:", path);
+    // Use the callback prop
+    onFileSelect(path);
   };
 
   const handleFolderClick = (path: string) => {
@@ -66,7 +71,7 @@ export default function FileTree() {
             <li key={item.path}>
               <button
                 onClick={() => item.type === 'dir' ? handleFolderClick(item.path) : handleFileClick(item.path)}
-                className={`flex items-center space-x-2 p-1 rounded w-full text-left text-sm hover:bg-accent ${selectedPath === item.path ? 'bg-accent font-medium' : ''}`}
+                className={`flex items-center space-x-2 p-1 rounded w-full text-left text-sm hover:bg-accent ${selectedFilePath === item.path ? 'bg-accent font-medium' : ''}`}
               >
                 {item.type === 'dir' ? (
                   <Folder size={16} className="text-sky-600" /> 

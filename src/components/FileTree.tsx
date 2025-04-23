@@ -1,9 +1,22 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { getFileTree, type FileTreeItem } from '@/lib/actions/githubApi';
+import { getFileTree, type FileTreeItem, createFolder, createOrUpdateFile } from '@/lib/actions/githubApi';
 import { Skeleton } from "@/components/ui/skeleton";
-import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2 } from 'lucide-react'; // Add FolderOpen, ChevronRight, ChevronDown, and Loader2
+import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogClose
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 // Define props interface
 interface FileTreeProps {
@@ -101,6 +114,14 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   );
 });
 
+// Helper function to get parent directory
+const getParentDirectory = (filePath: string | null): string => {
+  if (!filePath) return ''; // Root if no file selected
+  const lastSlash = filePath.lastIndexOf('/');
+  if (lastSlash === -1) return ''; // Root if file is in root
+  return filePath.substring(0, lastSlash);
+};
+
 // Main FileTree component
 export default function FileTree({ selectedFilePath, onFileSelect }: FileTreeProps) {
   const [treeData, setTreeData] = useState<FileTreeItem[]>([]);
@@ -109,6 +130,14 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
   const [loadingFolders, setLoadingFolders] = useState<Set<string>>(new Set());
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  // Dialog State
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [createItemType, setCreateItemType] = useState<'file' | 'folder' | null>(null);
+  const [createItemTargetDir, setCreateItemTargetDir] = useState<string>('');
+  const [newItemName, setNewItemName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
   // Fetch initial root tree data
   useEffect(() => {
@@ -173,44 +202,187 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
     console.log("Clicked folder (expansion TBD):", path);
   };
 
+  // Function to refresh a specific directory (or root)
+  const refreshDirectory = useCallback(async (dirPath: string) => {
+    setLoadingFolders((prev) => new Set(prev).add(dirPath)); // Show loading in parent
+    try {
+      const items = await getFileTree(dirPath);
+      if (dirPath === '') {
+        setTreeData(items);
+      } else {
+        setChildrenCache((prev) => ({ ...prev, [dirPath]: items }));
+        // Ensure parent folder remains expanded after refresh
+        setExpandedFolders((prev) => new Set(prev).add(dirPath)); 
+      }
+    } catch (err: any) {
+      console.error(`Failed to refresh directory ${dirPath}:`, err);
+      toast({
+        title: "Error",
+        description: `Could not refresh directory content: ${err.message}`,
+        variant: "destructive",
+      });
+      // Remove potential failed expansion
+      if (dirPath !== '') {
+         setExpandedFolders((prev) => {
+             const next = new Set(prev);
+             next.delete(dirPath);
+             return next;
+         });
+      }
+    } finally {
+      setLoadingFolders((prev) => {
+        const next = new Set(prev);
+        next.delete(dirPath);
+        return next;
+      });
+    }
+  }, [toast]);
+
+  // Handlers to open the creation dialog
+  const handleRequestCreateFile = () => {
+    const targetDir = getParentDirectory(selectedFilePath);
+    setCreateItemTargetDir(targetDir);
+    setCreateItemType('file');
+    setNewItemName('');
+    setIsCreating(false);
+    setIsCreateDialogOpen(true);
+  };
+
+  const handleRequestCreateFolder = () => {
+    const targetDir = getParentDirectory(selectedFilePath);
+    setCreateItemTargetDir(targetDir);
+    setCreateItemType('folder');
+    setNewItemName('');
+    setIsCreating(false);
+    setIsCreateDialogOpen(true);
+  };
+
+  // Handler for dialog submission
+  const handleCreateItem = async () => {
+    if (!newItemName || !createItemType) return;
+    setIsCreating(true);
+    const trimmedName = newItemName.trim();
+    const fullPath = createItemTargetDir ? `${createItemTargetDir}/${trimmedName}` : trimmedName;
+
+    let result: { success: boolean; error?: string };
+
+    try {
+      if (createItemType === 'folder') {
+        result = await createFolder(fullPath);
+      } else {
+        // Creating an empty file initially
+        result = await createOrUpdateFile(fullPath, '', `Create ${trimmedName}`);
+      }
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: `${createItemType === 'folder' ? 'Folder' : 'File'} "${trimmedName}" created.`,
+        });
+        setIsCreateDialogOpen(false);
+        // Refresh the parent directory to show the new item
+        await refreshDirectory(createItemTargetDir);
+      } else {
+        throw new Error(result.error || `Failed to create ${createItemType}.`);
+      }
+    } catch (err: any) {
+      console.error(`Failed to create ${createItemType}:`, err);
+      toast({
+        title: "Error Creating Item",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+       setIsCreating(false);
+    }
+  };
+
   return (
-    <div className="h-full w-full p-2 border-r bg-muted/40 overflow-y-auto">
-      <h2 className="text-lg font-semibold mb-2 px-2">Explorer</h2>
-      
-      {isInitialLoading && (
-        <div className="space-y-2 p-2">
-          <Skeleton className="h-5 w-full" />
-          <Skeleton className="h-5 w-11/12" />
-          <Skeleton className="h-5 w-10/12" />
+    <div className="h-full w-full p-2 border-r bg-muted/40 overflow-y-auto flex flex-col">
+      <div className="flex justify-between items-center mb-2 px-2">
+        <h2 className="text-lg font-semibold">Explorer</h2>
+        <div className="space-x-1">
+           <Button variant="ghost" size="icon" onClick={handleRequestCreateFile} title="New File">
+              <FilePlus className="h-4 w-4" />
+           </Button>
+           <Button variant="ghost" size="icon" onClick={handleRequestCreateFolder} title="New Folder">
+               <FolderPlus className="h-4 w-4" />
+           </Button>
         </div>
-      )}
+      </div>
+      
+      {/* Tree rendering area (needs flex-grow) */} 
+      <div className="flex-grow overflow-y-auto">
+          {isInitialLoading && (
+            <div className="space-y-2 p-2">
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-11/12" />
+              <Skeleton className="h-5 w-10/12" />
+            </div>
+          )}
+    
+          {error && (
+            <p className="text-destructive px-2">Error: {error}</p>
+          )}
+    
+          {!isInitialLoading && !error && treeData.length === 0 && (
+             <p className="text-muted-foreground px-2 text-sm">Repository is empty.</p>
+          )}
+    
+          {!isInitialLoading && !error && treeData.length > 0 && (
+            <ul className="space-y-1">
+              {treeData.map((item) => (
+                <RenderTreeItem
+                  key={item.path}
+                  item={item}
+                  level={0} 
+                  selectedFilePath={selectedFilePath}
+                  expandedFolders={expandedFolders}
+                  loadingFolders={loadingFolders}
+                  childrenCache={childrenCache}
+                  onFolderToggle={handleFolderToggle}
+                  onFileClick={handleFileClick}
+                />
+              ))}
+            </ul>
+          )}
+      </div>
 
-      {error && (
-        <p className="text-destructive px-2">Error: {error}</p>
-      )}
-
-      {!isInitialLoading && !error && treeData.length === 0 && (
-         <p className="text-muted-foreground px-2 text-sm">Repository is empty.</p>
-      )}
-
-      {!isInitialLoading && !error && treeData.length > 0 && (
-        <ul className="space-y-1">
-          {/* Use the recursive component to render the root items */} 
-          {treeData.map((item) => (
-            <RenderTreeItem
-              key={item.path}
-              item={item}
-              level={0} // Start at level 0
-              selectedFilePath={selectedFilePath}
-              expandedFolders={expandedFolders}
-              loadingFolders={loadingFolders}
-              childrenCache={childrenCache}
-              onFolderToggle={handleFolderToggle}
-              onFileClick={handleFileClick}
-            />
-          ))}
-        </ul>
-      )}
+      {/* Create Item Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create New {createItemType === 'folder' ? 'Folder' : 'File'}</DialogTitle>
+            <DialogDescription>
+              Enter the name for the new {createItemType}. It will be created in '{createItemTargetDir || '/'}'.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">
+                Name
+              </Label>
+              <Input 
+                id="name" 
+                value={newItemName} 
+                onChange={(e) => setNewItemName(e.target.value)}
+                className="col-span-3" 
+                placeholder={createItemType === 'folder' ? 'MyFolder' : 'new-file.md'}
+                disabled={isCreating}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+             <DialogClose asChild>
+                <Button type="button" variant="outline" disabled={isCreating}>Cancel</Button>
+              </DialogClose>
+            <Button type="submit" onClick={handleCreateItem} disabled={isCreating || !newItemName.trim()}>
+              {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

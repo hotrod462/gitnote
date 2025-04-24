@@ -12,6 +12,12 @@ export type ConnectionStatus =
   | { status: 'CONNECTION_NO_REPO', installationId: number }
   | { status: 'CONNECTED', installationId: number, repoFullName: string };
 
+// Define and export the Repository type
+export interface Repository {
+  id: number;
+  full_name: string;
+}
+
 /**
  * Checks the user's connection status by querying the Supabase table.
  */
@@ -56,11 +62,6 @@ export async function checkUserConnectionStatus(): Promise<ConnectionStatus> {
 
   console.log(`User ${user.id} is connected with installation ID ${installationId} and repository ${repoFullName}.`);
   return { status: 'CONNECTED', installationId, repoFullName };
-}
-
-interface Repository {
-    id: number;
-    full_name: string;
 }
 
 /**

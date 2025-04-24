@@ -4,19 +4,15 @@ import React, { useState, useEffect, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { getInstallationRepositories, saveRepositorySelection } from '@/lib/actions/githubConnections';
+import { getInstallationRepositories, saveRepositorySelection, type Repository } from '@/lib/actions/githubConnections';
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface SelectRepoPromptProps {
   installationId: number;
+  onSuccess: () => void;
 }
 
-interface Repository {
-  id: number;
-  full_name: string;
-}
-
-export default function SelectRepoPrompt({ installationId }: SelectRepoPromptProps) {
+export default function SelectRepoPrompt({ installationId, onSuccess }: SelectRepoPromptProps) {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [selectedRepo, setSelectedRepo] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -51,63 +47,83 @@ export default function SelectRepoPrompt({ installationId }: SelectRepoPromptPro
         setError(result.error);
       } else {
         console.log("Repository selection saved successfully.");
+        onSuccess();
       }
     });
   };
 
-  return (
-    <div className="text-left w-full">
-      <h2 className="text-xl font-semibold mb-3 text-center">Select Repository</h2>
-      <p className="mb-4 text-muted-foreground text-center">
-        Choose the repository you want GitNote to use.
-      </p>
-      
-      {isLoading && (
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-[250px]" />
-          <Skeleton className="h-4 w-[200px]" />
-          <Skeleton className="h-4 w-[220px]" />
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <h2 className="text-xl font-semibold mb-4">Select Repository</h2>
+        <p className="mb-6 text-muted-foreground">Loading available repositories...</p>
+        <div className="space-y-4 w-full max-w-md">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-32 self-center mt-4" />
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {error && (
-        <p className="text-destructive text-center">Error: {error}</p>
-      )}
+  if (error && !isSaving) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-red-600">
+        <h2 className="text-xl font-semibold mb-4">Error Loading Repositories</h2>
+        <p className="mb-4 text-center">{error}</p>
+        <p className="text-sm text-muted-foreground">Please check your GitHub connection and try again.</p>
+      </div>
+    );
+  }
 
-      {!isLoading && !error && repositories.length === 0 && (
-         <p className="text-muted-foreground text-center">No repositories found for this installation. Please ensure you granted access during installation.</p>
-      )}
+  if (repositories.length === 0 && !isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <h2 className="text-xl font-semibold mb-4">No Accessible Repositories Found</h2>
+        <p className="mb-6 text-muted-foreground text-center">
+          The GitNote GitHub App installation doesn&apos;t have access to any repositories, 
+          or failed to load them. 
+          Please go to your GitHub App settings, grant access to a repository, and then refresh.
+        </p>
+        <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+      </div>
+    );
+  }
 
-      {!isLoading && !error && repositories.length > 0 && (
-        <RadioGroup 
-          value={selectedRepo}
-          onValueChange={setSelectedRepo}
-          className="mb-4 space-y-2 max-h-60 overflow-y-auto p-1"
-        >
-          {repositories.map((repo) => (
-            <div key={repo.id} className="flex items-center space-x-2 p-2 border rounded hover:bg-muted">
-              <RadioGroupItem value={repo.full_name} id={`repo-${repo.id}`} />
-              <Label htmlFor={`repo-${repo.id}`} className="cursor-pointer flex-grow">
-                {repo.full_name}
-              </Label>
-            </div>
-          ))}
-        </RadioGroup>
-      )}
+  return (
+    <div className="flex flex-col items-center justify-center h-full p-8">
+      <h2 className="text-xl font-semibold mb-4">Select Repository</h2>
+      <p className="mb-6 text-muted-foreground">
+        Choose the repository you want to use for storing your notes:
+      </p>
+      <RadioGroup
+        value={selectedRepo}
+        onValueChange={setSelectedRepo}
+        className="mb-6 space-y-2 w-full max-w-md"
+        aria-label="Repositories"
+      >
+        {repositories.map((repo) => (
+          <div key={repo.id} className="flex items-center space-x-2 border p-3 rounded-md">
+            <RadioGroupItem value={repo.full_name} id={`repo-${repo.id}`} />
+            <Label htmlFor={`repo-${repo.id}`} className="flex-grow cursor-pointer">
+              {repo.full_name}
+            </Label>
+          </div>
+        ))}
+      </RadioGroup>
 
       {error && isSaving && (
-         <p className="text-destructive text-center mt-2">Error saving: {error}</p>
-       )}
+          <p className="text-red-600 mb-4">Error saving: {error}</p>
+      )}
 
-      <div className="text-center mt-4"> 
-        <Button 
-          onClick={handleConfirm} 
-          disabled={!selectedRepo || isLoading || isSaving}
-        >
-          {isSaving ? "Saving..." : "Confirm Repository"}
-        </Button>
-      </div>
-
+      <Button
+        onClick={handleConfirm}
+        disabled={!selectedRepo || isSaving}
+        size="lg"
+      >
+        {isSaving ? 'Confirming...' : 'Confirm Repository'}
+      </Button>
     </div>
   );
 } 

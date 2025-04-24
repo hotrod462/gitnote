@@ -37,30 +37,42 @@ export default function NotesPage() {
   const editorRef = useRef<EditorRef>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    async function fetchConnectionStatus() {
-      setIsLoadingConnection(true);
-      try {
-        const status = await checkUserConnectionStatus();
-        setConnection(status);
-      } catch (error) {
-        console.error("Failed to fetch connection status:", error);
-        toast({
-            title: "Connection Error",
-            description: "Could not check repository connection status. Please try again later.",
-            variant: "destructive"
-        });
-        setConnection({ status: 'NO_CONNECTION' });
-      } finally {
-        setIsLoadingConnection(false);
-      }
+  // Wrap the fetching logic in a useCallback for reuse
+  const fetchConnectionStatus = useCallback(async () => {
+    console.log('Fetching connection status...');
+    setIsLoadingConnection(true);
+    try {
+      const status = await checkUserConnectionStatus();
+      console.log('Connection status fetched:', status);
+      setConnection(status);
+    } catch (error) {
+      console.error("Failed to fetch connection status:", error);
+      toast({
+          title: "Connection Error",
+          description: "Could not check repository connection status. Please try again later.",
+          variant: "destructive"
+      });
+      setConnection({ status: 'NO_CONNECTION' }); // Set to a default error state
+    } finally {
+      setIsLoadingConnection(false);
     }
-    fetchConnectionStatus();
   }, [toast]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchConnectionStatus();
+  }, [fetchConnectionStatus]); // Dependency: the fetch function itself
+
+  // Handler for successful repository selection
+  const handleRepoSelected = useCallback(() => {
+    console.log('Repository selected, refreshing connection status...');
+    // Re-fetch the connection status after selection
+    fetchConnectionStatus(); 
+  }, [fetchConnectionStatus]);
 
   const handleSignOut = async () => {
     await signOut();
-    router.push('/login');
+    router.push('/login'); // Consider using '/' if that's the main login/landing page
   };
 
   const handleFileSelect = useCallback((selection: { path: string; isNew?: boolean }) => {
@@ -130,7 +142,7 @@ export default function NotesPage() {
   }
 
   if (connection?.status === 'CONNECTION_NO_REPO') {
-    return <SelectRepoPrompt installationId={connection.installationId} />;
+    return <SelectRepoPrompt installationId={connection.installationId} onSuccess={handleRepoSelected} />;
   }
 
   if (connection?.status === 'CONNECTED') {

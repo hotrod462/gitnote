@@ -1,9 +1,9 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { getFileTree, type FileTreeItem, createFolder, createOrUpdateFile } from '@/lib/actions/githubApi';
+import { getFileTree, type FileTreeItem, createFolder, createOrUpdateFile, deleteFile } from '@/lib/actions/githubApi';
 import { Skeleton } from "@/components/ui/skeleton";
-import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus } from 'lucide-react';
+import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { 
   Dialog, 
@@ -17,6 +17,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
 
 // Define props interface
 interface FileTreeProps {
@@ -34,6 +50,7 @@ interface RenderTreeItemProps {
   childrenCache: Record<string, FileTreeItem[]>;
   onFolderToggle: (path: string) => void;
   onFileClick: (path: string) => void;
+  onRequestDelete: (item: FileTreeItem) => void;
 }
 
 const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
@@ -44,14 +61,15 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   loadingFolders,
   childrenCache,
   onFolderToggle,
-  onFileClick
+  onFileClick,
+  onRequestDelete
 }) => {
   const isExpanded = expandedFolders.has(item.path);
   const isLoading = loadingFolders.has(item.path);
   const children = childrenCache[item.path];
   const indentStyle = { paddingLeft: `${level * 1.25}rem` }; // Indentation based on level
 
-  const handleClick = () => {
+  const handleItemClick = () => {
     if (item.type === 'dir') {
       onFolderToggle(item.path);
     } else {
@@ -60,9 +78,9 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   };
 
   return (
-    <li key={item.path}>
+    <li key={item.path} className="group relative">
       <button
-        onClick={handleClick}
+        onClick={handleItemClick}
         className={`flex items-center space-x-1 p-1 rounded w-full text-left text-sm hover:bg-accent ${selectedFilePath === item.path ? 'bg-accent font-medium' : ''}`}
         style={indentStyle}
       >
@@ -78,9 +96,29 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
         ) : (
           <File size={16} className="ml-[16px] text-muted-foreground" /> // Add margin to align with folder icons
         )}
-        <span>{item.name}</span>
+        <span className="flex-grow truncate">{item.name}</span>
       </button>
-      {/* Render children if expanded and available */} 
+
+      <DropdownMenu>
+          <DropdownMenuTrigger asChild className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+             <Button variant="ghost" size="icon" className="h-6 w-6">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Item options</span>
+              </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+             {item.type === 'file' && item.sha && (
+                  <DropdownMenuItem 
+                      className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                      onClick={() => onRequestDelete(item)}
+                  >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete File
+                  </DropdownMenuItem>
+              )}
+          </DropdownMenuContent>
+      </DropdownMenu>
+
       {isExpanded && children && (
         <ul className="space-y-1 mt-1">
           {children.length === 0 && (
@@ -99,11 +137,11 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
               childrenCache={childrenCache}
               onFolderToggle={onFolderToggle}
               onFileClick={onFileClick}
+              onRequestDelete={onRequestDelete}
             />
           ))}
         </ul>
       )}
-      {/* Render loading skeleton specifically for children if expanded but loading */}
       {isExpanded && isLoading && (
          <div className="space-y-1 pl-4 mt-1" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
            <Skeleton className="h-4 w-10/12" />
@@ -138,6 +176,11 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
   const [createItemTargetDir, setCreateItemTargetDir] = useState<string>('');
   const [newItemName, setNewItemName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+
+  // Delete Dialog State
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<FileTreeItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch initial root tree data
   useEffect(() => {
@@ -297,6 +340,83 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
     }
   };
 
+  // Delete handlers
+  const handleRequestDelete = (item: FileTreeItem) => {
+      // Can only delete files with SHA for now
+      if (item.type !== 'file' || !item.sha) return;
+      setItemToDelete(item);
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+      if (!itemToDelete || !itemToDelete.sha) return;
+      setIsDeleting(true);
+      
+      const itemPath = itemToDelete.path;
+      const itemSha = itemToDelete.sha;
+      const parentDir = getParentDirectory(itemPath);
+
+      // Flag to track success for finally block
+      let deleteSucceeded = false; 
+
+      // --- Optimistic UI Update --- 
+      let originalTreeData: FileTreeItem[] | null = null;
+      let originalChildrenCache: Record<string, FileTreeItem[]> | null = null;
+
+      if (parentDir === '') {
+          originalTreeData = [...treeData]; // Shallow copy
+          setTreeData((prev) => prev.filter(i => i.path !== itemPath));
+      } else {
+          originalChildrenCache = {...childrenCache}; // Shallow copy
+          setChildrenCache((prev) => ({
+              ...prev,
+              [parentDir]: prev[parentDir]?.filter(i => i.path !== itemPath) || []
+          }));
+      }
+      // --- End Optimistic UI --- 
+
+      try {
+          const result = await deleteFile(itemPath, itemSha); // Call server action
+
+          if (result.success) {
+              toast({
+                  title: "Success",
+                  description: `File "${itemToDelete.name}" deleted.`,
+              });
+              deleteSucceeded = true; // Set flag on success
+              // Optional: If the deleted file was selected, unselect it
+              if (selectedFilePath === itemPath) {
+                  onFileSelect(''); // Or null, depending on how NotesPage handles it
+              }
+          } else {
+              throw new Error(result.error || 'Failed to delete file.');
+          }
+      } catch (err: any) {
+          console.error(`Failed to delete file ${itemPath}:`, err);
+          toast({
+              title: "Error Deleting File",
+              description: err.message,
+              variant: "destructive",
+          });
+          // --- Revert Optimistic UI --- 
+          if (parentDir === '') {
+              if (originalTreeData) setTreeData(originalTreeData);
+          } else {
+              if (originalChildrenCache) setChildrenCache(originalChildrenCache);
+          }
+          // --- End Revert --- 
+          // deleteSucceeded remains false
+      } finally {
+          setIsDeleting(false);
+          setIsDeleteDialogOpen(false); // Always close the dialog
+          if (deleteSucceeded) {
+              setItemToDelete(null); // Clear item only on success
+          }
+          // If keeping item on error, ensure it's cleared eventually or dialog handles it
+      }
+  };
+
   return (
     <div className="h-full w-full p-2 border-r bg-muted/40 overflow-y-auto flex flex-col">
       <div className="flex justify-between items-center mb-2 px-2">
@@ -342,6 +462,7 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
                   childrenCache={childrenCache}
                   onFolderToggle={handleFolderToggle}
                   onFileClick={handleFileClick}
+                  onRequestDelete={handleRequestDelete}
                 />
               ))}
             </ul>
@@ -383,6 +504,30 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */} 
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the file 
+              <span className="font-medium">{itemToDelete?.name}</span> from your repository.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete} 
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 } 

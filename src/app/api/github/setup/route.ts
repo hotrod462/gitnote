@@ -4,15 +4,24 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr' // Import
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url)
-  const installationId = searchParams.get('installation_id')
-  const setupAction = searchParams.get('setup_action')
+  // Get the canonical app URL from environment variables
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) {
+    console.error("Error: NEXT_PUBLIC_APP_URL environment variable is not set.");
+    // Return a generic server error response or redirect to a generic error page
+    // Avoid using origin here as well if it might be unreliable
+    return new NextResponse("Server configuration error.", { status: 500 }); 
+  }
+
+  const { searchParams } = new URL(request.url); // Still need searchParams
+  const installationId = searchParams.get('installation_id');
+  const setupAction = searchParams.get('setup_action');
 
   // Verify installation details from GitHub redirect
   if (setupAction !== 'install' || !installationId) {
     console.error('Invalid GitHub App setup callback parameters.', { installationId, setupAction });
-    // Redirect to notes, maybe show an error toast there?
-    return NextResponse.redirect(`${origin}/notes?error=github_setup_invalid_params`);
+    // Redirect to notes using the configured app URL
+    return NextResponse.redirect(`${appUrl}/notes?error=github_setup_invalid_params`);
   }
 
   const cookieStore = cookies();
@@ -23,15 +32,25 @@ export async function GET(request: NextRequest) {
 
   if (userError || !user) {
     console.error('User not found during GitHub App setup callback:', userError);
-    // User needs to be logged in to link the installation
-    return NextResponse.redirect(`${origin}/?error=github_setup_no_user`); // Redirect to login
+    // Redirect to login/home page using the configured app URL
+    // Assuming '/' is your home/login page if no user is found
+    return NextResponse.redirect(`${appUrl}/?error=github_setup_no_user`); 
   }
 
   // Use Supabase Admin Client to write to user_connections
-  // IMPORTANT: Ensure SERVICE_ROLE_KEY is properly configured in .env.local
+  // IMPORTANT: Ensure SERVICE_ROLE_KEY is properly configured in .env.local and Vercel
+  // Retrieve Supabase URL and Service Role Key from environment variables
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error("Error: Supabase URL or Service Role Key environment variables are not set.");
+    return new NextResponse("Server configuration error (Supabase keys missing).", { status: 500 });
+  }
+
   const supabaseAdmin = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use Service Role Key
+    supabaseUrl,
+    serviceRoleKey, // Use Service Role Key
     {
       cookies: { // Required cookie functions even for admin client
           get(name: string) { return cookieStore.get(name)?.value },
@@ -57,18 +76,19 @@ export async function GET(request: NextRequest) {
 
     if (upsertError) {
       console.error('Error upserting user connection:', upsertError);
-      // Redirect to notes but maybe indicate an error occurred?
-      return NextResponse.redirect(`${origin}/notes?error=github_setup_db_error`);
+      // Redirect to notes using the configured app URL
+      return NextResponse.redirect(`${appUrl}/notes?error=github_setup_db_error`);
     }
   } catch (error: unknown) {
       console.error('Unexpected error during upsert:', error);
       const message = error instanceof Error ? error.message : 'Database operation failed';
-       return NextResponse.redirect(`${origin}/notes?error=github_setup_db_unexpected&message=${encodeURIComponent(message)}`);
+       // Redirect to notes using the configured app URL
+       return NextResponse.redirect(`${appUrl}/notes?error=github_setup_db_unexpected&message=${encodeURIComponent(message)}`);
   }
 
   console.log(`Successfully linked installation ${installationId} to user ${user.id}`);
   
-  // Redirect back to the main notes page
+  // Redirect back to the main notes page using the configured app URL
   // The notes page will re-run checkUserConnectionStatus and now find CONNECTION_NO_REPO
-  return NextResponse.redirect(`${origin}/notes`);
+  return NextResponse.redirect(`${appUrl}/notes`);
 } 

@@ -1,9 +1,9 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { getFileTree, type FileTreeItem, createFolder, createOrUpdateFile, deleteFile } from '@/lib/actions/githubApi';
+import { getFileTree, type FileTreeItem, createFolder, createOrUpdateFile, deleteFile, renameFile } from '@/lib/actions/githubApi';
 import { Skeleton } from "@/components/ui/skeleton";
-import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus, MoreHorizontal, Trash2 } from 'lucide-react';
+import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { 
   Dialog, 
@@ -23,21 +23,14 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { 
-  AlertDialog, 
-  AlertDialogAction, 
-  AlertDialogCancel, 
-  AlertDialogContent, 
-  AlertDialogDescription, 
-  AlertDialogFooter, 
-  AlertDialogHeader, 
-  AlertDialogTitle 
-} from "@/components/ui/alert-dialog";
+import CreateItemDialog from './CreateItemDialog';
+import DeleteConfirmationDialog from './DeleteConfirmationDialog';
+import RenameDialog from './RenameDialog';
 
 // Define props interface
 interface FileTreeProps {
   selectedFilePath: string | null;
-  onFileSelect: (filePath: string) => void;
+  onFileSelect: (selection: { path: string; isNew?: boolean }) => void;
 }
 
 // Recursive component to render tree items
@@ -49,8 +42,9 @@ interface RenderTreeItemProps {
   loadingFolders: Set<string>;
   childrenCache: Record<string, FileTreeItem[]>;
   onFolderToggle: (path: string) => void;
-  onFileClick: (path: string) => void;
+  onFileClick: (selection: { path: string; isNew?: boolean }) => void;
   onRequestDelete: (item: FileTreeItem) => void;
+  onRequestRename: (item: FileTreeItem) => void;
 }
 
 const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
@@ -62,7 +56,8 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   childrenCache,
   onFolderToggle,
   onFileClick,
-  onRequestDelete
+  onRequestDelete,
+  onRequestRename
 }) => {
   const isExpanded = expandedFolders.has(item.path);
   const isLoading = loadingFolders.has(item.path);
@@ -73,7 +68,7 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
     if (item.type === 'dir') {
       onFolderToggle(item.path);
     } else {
-      onFileClick(item.path);
+      onFileClick({ path: item.path, isNew: false });
     }
   };
 
@@ -113,6 +108,12 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {item.type === 'file' && item.sha && (
+              <DropdownMenuItem onClick={() => onRequestRename(item)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Rename File
+              </DropdownMenuItem>
+            )}
+            {item.type === 'file' && item.sha && (
               <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => onRequestDelete(item)}>
                 <Trash2 className="mr-2 h-4 w-4" /> Delete File
               </DropdownMenuItem>
@@ -146,6 +147,7 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
                       onFolderToggle={onFolderToggle}
                       onFileClick={onFileClick}
                       onRequestDelete={onRequestDelete}
+                      onRequestRename={onRequestRename}
                   />
               ))}
           </ul>
@@ -182,14 +184,15 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createItemType, setCreateItemType] = useState<'file' | 'folder' | null>(null);
   const [createItemTargetDir, setCreateItemTargetDir] = useState<string>('');
-  const [newItemName, setNewItemName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
 
   // Delete Dialog State
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<FileTreeItem | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null); // Specific error for dialog
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Rename Dialog State
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [itemToRename, setItemToRename] = useState<FileTreeItem | null>(null);
 
   // Fetch initial root tree data
   useEffect(() => {
@@ -244,9 +247,8 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
     setExpandedFolders(newExpandedFolders);
   }, [expandedFolders, childrenCache, loadingFolders]);
 
-  const handleFileClick = (path: string) => {
-    // Use the callback prop
-    onFileSelect(path);
+  const handleFileClick = (selection: { path: string; isNew?: boolean }) => {
+    onFileSelect(selection);
   };
 
   const handleFolderClick = (path: string) => {
@@ -295,8 +297,6 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
     const targetDir = getParentDirectory(selectedFilePath);
     setCreateItemTargetDir(targetDir);
     setCreateItemType('file');
-    setNewItemName('');
-    setIsCreating(false);
     setIsCreateDialogOpen(true);
   };
 
@@ -304,25 +304,21 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
     const targetDir = getParentDirectory(selectedFilePath);
     setCreateItemTargetDir(targetDir);
     setCreateItemType('folder');
-    setNewItemName('');
-    setIsCreating(false);
     setIsCreateDialogOpen(true);
   };
 
-  // Handler for dialog submission
-  const handleCreateItem = async () => {
-    if (!newItemName || !createItemType) return;
-    setIsCreating(true);
-    const trimmedName = newItemName.trim();
+  // Handler for dialog submission - simplified, receives name from dialog
+  const handleCreateItem = useCallback(async (itemName: string) => {
+    if (!itemName || !createItemType) return;
     const parentDir = createItemTargetDir;
-    const fullPath = parentDir ? `${parentDir}/${trimmedName}` : trimmedName;
+    const fullPath = parentDir ? `${parentDir}/${itemName}` : itemName;
+    const newItemTypeMapped = createItemType === 'folder' ? 'dir' : 'file';
 
     // --- Optimistic UI --- 
     const newItem: FileTreeItem = {
-        name: trimmedName,
+        name: itemName,
         path: fullPath,
-        type: createItemType === 'folder' ? 'dir' : 'file', // Map 'folder' to 'dir'
-        // SHA will be undefined initially for both files and folders
+        type: newItemTypeMapped,
     };
 
     let originalTreeData: FileTreeItem[] | null = null;
@@ -354,26 +350,24 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
             setExpandedFolders(prev => new Set(prev).add(parentDir));
         }
     }
-    // Close dialog immediately for optimistic feel
-    setIsCreateDialogOpen(false); 
     // --- End Optimistic UI --- 
 
     let result: { success: boolean; error?: string; sha?: string | null };
 
     try {
-      if (createItemType === 'folder') {
+      if (newItemTypeMapped === 'dir') {
         result = await createFolder(fullPath);
       } else {
-        result = await createOrUpdateFile(fullPath, '', `Create ${trimmedName}`);
+        result = await createOrUpdateFile(fullPath, '', `Create ${itemName}`);
       }
 
       if (result.success) {
         toast({
           title: "Success",
-          description: `${createItemType === 'folder' ? 'Folder' : 'File'} "${trimmedName}" created.`,
+          description: `${newItemTypeMapped === 'dir' ? 'Folder' : 'File'} "${itemName}" created.`,
         });
-        // Update SHA if it's a file and SHA was returned
-        if (createItemType === 'file' && result.sha) {
+        // Update SHA if it's a file
+        if (newItemTypeMapped === 'file' && result.sha) {
             const newSha = result.sha;
             // Update the item in the state with the correct SHA
              if (parentDir === '') {
@@ -385,12 +379,17 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
                 }));
             }
         }
-        // No need to refresh directory, already added optimistically
+        // Auto-select the newly created file
+        if (newItemTypeMapped === 'file') {
+            onFileSelect({ path: fullPath, isNew: true }); 
+        }
+        // --- IMPORTANT: Close dialog on success --- 
+        setIsCreateDialogOpen(false); 
       } else {
-        throw new Error(result.error || `Failed to create ${createItemType}.`);
+        throw new Error(result.error || `Failed to create ${newItemTypeMapped}.`);
       }
     } catch (err: any) {
-      console.error(`Failed to create ${createItemType}:`, err);
+      console.error(`Failed to create ${newItemTypeMapped}:`, err);
       toast({
         title: "Error Creating Item",
         description: err.message,
@@ -418,38 +417,26 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
         // Re-open dialog on error? Maybe not, user can click again.
        // setIsCreateDialogOpen(true); 
       // --- End Revert --- 
-    } finally {
-       setIsCreating(false);
-       // Reset dialog inputs? Only if dialog is kept open on error.
-       // setNewItemName(''); 
     }
-  };
+  }, [createItemType, createItemTargetDir, treeData, childrenCache, toast, onFileSelect, expandedFolders]);
 
   // Delete handlers
   const handleRequestDelete = (item: FileTreeItem) => {
-      // No longer restricted to files
-      // if (item.type !== 'file' || !item.sha) return; 
       setItemToDelete(item);
-      setDeleteError(null); // Clear previous errors
-      setIsDeleting(false);
+      setDeleteError(null);
       setIsDeleteDialogOpen(true);
   };
 
-  const handleConfirmDelete = async () => {
-      if (!itemToDelete) return;
-      setIsDeleting(true);
-      setDeleteError(null);
+  const handleConfirmDelete = useCallback(async () => {
+      if (!itemToDelete) return Promise.reject("No item selected for deletion");
       
+      setDeleteError(null);
       const itemPath = itemToDelete.path;
       const itemType = itemToDelete.type;
       const itemName = itemToDelete.name;
-      const itemSha = itemToDelete.sha; // Note: Will be undefined for folders initially
+      const itemSha = itemToDelete.sha;
       const parentDir = getParentDirectory(itemPath);
 
-      // Flag to track success for finally block
-      let deleteSucceeded = false; 
-
-      // --- Optimistic UI Update --- 
       let originalTreeData: FileTreeItem[] | null = null;
       let originalChildrenCache: Record<string, FileTreeItem[]> | null = null;
 
@@ -463,94 +450,144 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
               [parentDir]: prev[parentDir]?.filter(i => i.path !== itemPath) || []
           }));
       }
-      // --- End Optimistic UI --- 
 
       try {
           let result: { success: boolean; error?: string };
-
           if (itemType === 'file') {
-              if (!itemSha) {
-                  throw new Error('File SHA is missing, cannot delete.');
-              }
+              if (!itemSha) { throw new Error('File SHA is missing...'); }
               result = await deleteFile(itemPath, itemSha);
-          } else { // itemType === 'dir'
-              // --- Folder Deletion Logic --- 
+          } else {
               let children = childrenCache[itemPath];
-              // Fetch children if not cached
               if (children === undefined) {
-                  console.log(`Fetching children for folder ${itemPath} before delete check...`);
-                  // Indicate loading specifically for this check? Maybe not necessary.
-                  try {
-                      children = await getFileTree(itemPath);
-                      // Cache the result even if deletion fails/aborted
-                      setChildrenCache((prev) => ({ ...prev, [itemPath]: children || [] }));
-                  } catch (fetchErr: any) { 
-                      throw new Error(`Could not check folder contents: ${fetchErr.message}`);
-                  }
+                  children = await getFileTree(itemPath);
+                  setChildrenCache((prev) => ({ ...prev, [itemPath]: children || [] }));
               }
-
-              // Check if folder is empty or only contains .gitkeep
               const gitkeepItem = children?.find(c => c.name === '.gitkeep');
               const isEmpty = children?.length === 0 || (children?.length === 1 && gitkeepItem);
-
-              if (!isEmpty) {
-                   throw new Error('Cannot delete non-empty folder.');
-              }
-
-              // If empty and .gitkeep exists, delete it
+              if (!isEmpty) { throw new Error('Cannot delete non-empty folder.'); }
               if (gitkeepItem && gitkeepItem.sha) {
-                  console.log(`Attempting to delete .gitkeep in ${itemPath}`);
-                  result = await deleteFile(gitkeepItem.path, gitkeepItem.sha, `Delete folder ${itemName}`);
-                  if (!result.success) {
-                      // If deleting .gitkeep fails, the folder delete fails
-                      throw new Error(result.error || 'Failed to delete .gitkeep file.');
-                  }
-              } else {
-                  // Folder is truly empty (or .gitkeep check failed but we proceed)
-                  console.log(`Folder ${itemPath} is empty, considering delete successful.`);
-                  result = { success: true }; // No actual file to delete
-              }
-               // --- End Folder Deletion Logic --- 
+                   result = await deleteFile(gitkeepItem.path, gitkeepItem.sha, `Delete folder ${itemName}`);
+              } else { result = { success: true }; }
           }
 
-          // Handle result
           if (result.success) {
               toast({
                   title: "Success",
                   description: `${itemType === 'dir' ? 'Folder' : 'File'} "${itemName}" deleted.`,
               });
-              deleteSucceeded = true;
-              // Optional: If the deleted item was selected, unselect it
-              if (selectedFilePath === itemPath) {
-                  onFileSelect('');
-              }
+              if (selectedFilePath === itemPath) { onFileSelect({ path: '' }); }
+              setIsDeleteDialogOpen(false);
+              setItemToDelete(null);
           } else {
               throw new Error(result.error || `Failed to delete ${itemType}.`);
           }
       } catch (err: any) {
           console.error(`Failed to delete ${itemType} ${itemPath}:`, err);
-          setDeleteError(err.message); // Set specific error for dialog
+          setDeleteError(err.message);
           toast({
               title: `Error Deleting ${itemType === 'dir' ? 'Folder' : 'File'}`,
               description: err.message,
               variant: "destructive",
           });
-          // --- Revert Optimistic UI --- 
           if (parentDir === '') {
               if (originalTreeData) setTreeData(originalTreeData);
           } else {
               if (originalChildrenCache) setChildrenCache(originalChildrenCache);
           }
-          // --- End Revert --- 
-      } finally {
-          setIsDeleting(false);
-          // Keep dialog open on error to show message
-          if (deleteSucceeded) { 
-               setIsDeleteDialogOpen(false); 
-               setItemToDelete(null); // Clear item only on success
-          }
+          throw err;
       }
+  }, [itemToDelete, childrenCache, treeData, toast, selectedFilePath, onFileSelect]);
+
+  // Rename Handlers
+  const handleRequestRename = (item: FileTreeItem) => {
+      if (item.type !== 'file' || !item.sha) return;
+      setItemToRename(item);
+      setIsRenameDialogOpen(true);
   };
+
+  const handleConfirmRename = useCallback(async (newNameFromDialog: string) => {
+      if (!itemToRename || !itemToRename.sha || !newNameFromDialog || itemToRename.name === newNameFromDialog) {
+          setIsRenameDialogOpen(false); 
+          return Promise.reject("Invalid rename parameters");
+      }
+      const oldPath = itemToRename.path;
+      const oldSha = itemToRename.sha;
+      const parentDir = getParentDirectory(oldPath);
+      const newPath = parentDir ? `${parentDir}/${newNameFromDialog}` : newNameFromDialog;
+
+      // --- Optimistic UI --- 
+      let originalTreeData: FileTreeItem[] | null = null;
+      let originalChildrenCache: Record<string, FileTreeItem[]> | null = null;
+      const updateState = (items: FileTreeItem[]) => {
+          return items.map(i => i.path === oldPath ? { ...i, name: newNameFromDialog, path: newPath } : i)
+                      .sort((a, b) => {
+                          if (a.type === 'dir' && b.type !== 'dir') return -1;
+                          if (a.type !== 'dir' && b.type === 'dir') return 1;
+                          return a.name.localeCompare(b.name);
+                      });
+      };
+
+      if (parentDir === '') {
+          originalTreeData = [...treeData];
+          setTreeData(prev => updateState(prev));
+      } else {
+          originalChildrenCache = {...childrenCache};
+          setChildrenCache(prev => ({
+              ...prev,
+              [parentDir]: updateState(prev[parentDir] || [])
+          }));
+      }
+      // Close dialog optimistically? No, let parent handle it on success.
+      // If the renamed item was selected, update the selection
+      if (selectedFilePath === oldPath) {
+          onFileSelect({ path: newPath, isNew: false });
+      }
+      // --- End Optimistic UI --- 
+
+      try {
+          const result = await renameFile(oldPath, newPath, oldSha);
+
+          if (result.success) {
+              toast({
+                  title: "Success",
+                  description: `File renamed to "${newNameFromDialog}".`,
+              });
+              // Update item with new SHA
+              if (result.newSha) {
+                  const finalSha = result.newSha;
+                   if (parentDir === '') {
+                      setTreeData(prev => prev.map(i => i.path === newPath ? { ...i, sha: finalSha } : i));
+                  } else {
+                      setChildrenCache(prev => ({
+                          ...prev,
+                          [parentDir]: prev[parentDir]?.map(i => i.path === newPath ? { ...i, sha: finalSha } : i) || []
+                      }));
+                  }
+              }
+              setIsRenameDialogOpen(false); // Close dialog on success
+              setItemToRename(null); // Clear item
+          } else {
+              throw new Error(result.error || 'Failed to rename file.');
+          }
+      } catch (err: any) {
+          console.error(`Failed to rename file ${oldPath} to ${newPath}:`, err);
+          toast({
+              title: "Error Renaming File",
+              description: err.message,
+              variant: "destructive",
+          });
+           // --- Revert Optimistic UI --- 
+           if (parentDir === '') {
+              if (originalTreeData) setTreeData(originalTreeData);
+          } else {
+              if (originalChildrenCache) setChildrenCache(originalChildrenCache);
+          }
+          // Revert selection
+          if (selectedFilePath === newPath) { onFileSelect({ path: oldPath, isNew: false }); }
+          // --- End Revert --- 
+          throw err; // Re-throw so dialog knows it failed
+      }
+  }, [itemToRename, treeData, childrenCache, toast, selectedFilePath, onFileSelect]);
 
   return (
     <div className="h-full w-full p-2 border-r bg-muted/40 overflow-y-auto flex flex-col">
@@ -598,87 +635,39 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
                   onFolderToggle={handleFolderToggle}
                   onFileClick={handleFileClick}
                   onRequestDelete={handleRequestDelete}
+                  onRequestRename={handleRequestRename}
                 />
               ))}
             </ul>
           )}
       </div>
 
-      {/* Create Item Dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Create New {createItemType === 'folder' ? 'Folder' : 'File'}</DialogTitle>
-            <DialogDescription>
-              Enter the name for the new {createItemType}. It will be created in '{createItemTargetDir || '/'}'.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
-                Name
-              </Label>
-              <Input 
-                id="name" 
-                value={newItemName} 
-                onChange={(e) => setNewItemName(e.target.value)}
-                className="col-span-3" 
-                placeholder={createItemType === 'folder' ? 'MyFolder' : 'new-file.md'}
-                disabled={isCreating}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-             <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isCreating}>Cancel</Button>
-              </DialogClose>
-            <Button type="submit" onClick={handleCreateItem} disabled={isCreating || !newItemName.trim()}>
-              {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Render the extracted Create Dialog */} 
+      <CreateItemDialog 
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        itemType={createItemType}
+        targetDirectory={createItemTargetDir}
+        onCreateConfirm={handleCreateItem}
+      />
 
-      {/* Delete Confirmation Dialog */} 
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {/* Display error message if one occurred */}
-              {deleteError && (
-                  <p className="text-destructive text-sm mb-2">Error: {deleteError}</p>
-              )}
-              This action cannot be undone. This will permanently delete the {itemToDelete?.type === 'dir' ? 'folder' : 'file'} 
-              <span className="font-medium">{itemToDelete?.name}</span> from your repository.
-              {itemToDelete?.type === 'dir' && (
-                  <span className="text-xs block mt-1"> (Only empty folders can be deleted)</span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            {/* Change Cancel to Close if there was an error */}
-            <AlertDialogCancel 
-                onClick={() => { setDeleteError(null); setItemToDelete(null); }}
-                disabled={isDeleting}
-            >
-                {deleteError ? 'Close' : 'Cancel'}
-            </AlertDialogCancel>
-            {/* Hide Delete button if there was an error */}
-            {!deleteError && (
-                 <AlertDialogAction 
-                  onClick={handleConfirmDelete} 
-                  disabled={isDeleting}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Delete
-                </AlertDialogAction>
-            )}
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Render extracted Delete Dialog */} 
+      <DeleteConfirmationDialog 
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        itemToDelete={itemToDelete}
+        deleteError={deleteError}
+        onConfirmDelete={handleConfirmDelete}
+        onClearError={() => setDeleteError(null)}
+      />
+
+      {/* Render extracted Rename Dialog */} 
+      <RenameDialog 
+        open={isRenameDialogOpen}
+        onOpenChange={setIsRenameDialogOpen}
+        itemToRename={itemToRename}
+        onRenameConfirm={handleConfirmRename}
+      />
     </div>
   );
 } 

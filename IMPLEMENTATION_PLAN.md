@@ -341,6 +341,21 @@ This document outlines the step-by-step process to build GitNote V1 based on the
     *   Result: Stable V1 release.
     *   Verification: Execute verification steps from previous points (#6 through #22) on deployed env. Perform exploratory testing. Test responsiveness. Confirm no critical bugs remain. Run `npm run lint`.
 
+## Phase 7: Performance & UX Enhancements (Post-V1)
+
+25. **Implement Persistent Caching (IndexedDB):**
+    *   **Goal:** Improve perceived performance on load and when switching between files by caching data locally.
+    *   **File Tree Caching:**
+        *   Action: Modify `FileTree` data loading.
+        *   Logic: On mount, attempt to load cached tree structure (root and potentially previously fetched children) from IndexedDB (`idb-keyval`). If found, display immediately. Then, fetch fresh data from GitHub in the background. Update UI and IndexedDB cache upon receiving fresh data. Save fetched folder children to IndexedDB cache as well.
+        *   Result: Faster initial tree display using potentially stale data while fresh data loads.
+    *   **Recent Document Caching:**
+        *   Action: Modify `Editor` data loading and saving.
+        *   Logic: Maintain a list of recent files in IndexedDB. When loading a file, check IndexedDB first. If found, display cached content/SHA immediately. Fetch fresh content from GitHub in the background. Update editor only if SHA differs. Save successfully loaded file content/SHA to IndexedDB.
+        *   Result: Faster switching between recently viewed documents; basic offline viewing capability.
+    *   **Interaction with New Files:** Ensure the logic from Step 14's refinement (immediately editing new files locally) integrates correctly with this caching.
+    *   Verification: Test initial load times with/without cache. Verify tree appears faster. Test switching between recent files - verify faster loads. Test offline loading of cached files. Verify new file creation still allows immediate editing.
+
 This revised plan explicitly uses Next.js 14 / React 18, reflects the consolidated GitHub App callback flow, includes repository selection, and adds more granular details about the components, libraries, API calls, and logic involved in each step, drawing directly from our discussion.
 
 This plan provides a detailed roadmap. Each numbered item represents a logical chunk of work, often corresponding to specific components or features. 

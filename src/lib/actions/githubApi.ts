@@ -318,4 +318,67 @@ export async function createFolder(
     }
     return { success: false, error: result.error || 'Failed to create folder.' };
   }
+}
+
+/**
+ * Renames a file using a delete + create strategy.
+ * NOTE: This is not atomic. Potential for failure after delete but before create.
+ * Limited to files for V1 simplicity.
+ */
+export async function renameFile(
+    oldPath: string,
+    newPath: string,
+    sha: string, // SHA of the old file is required
+    commitMessage?: string 
+): Promise<{ success: boolean; newSha?: string | null; error?: string }> {
+    noStore();
+    console.log(`renameFile called. From: "${oldPath}" To: "${newPath}" SHA: ${sha}`);
+
+    // 1. Get the content of the old file
+    let oldContent: string;
+    try {
+        const contentResult = await getFileContent(oldPath);
+        if (!contentResult) {
+            throw new Error('Original file not found.');
+        }
+        oldContent = contentResult.content;
+        // We already have the SHA from the parameter
+    } catch (error: any) {
+        console.error(`Error getting content for rename source "${oldPath}":`, error);
+        return { success: false, error: `Could not read original file: ${error.message}` };
+    }
+
+    // 2. Delete the old file
+    const deleteCommit = commitMessage || `Rename ${oldPath} to ${newPath} (delete step)`;
+    try {
+        const deleteResult = await deleteFile(oldPath, sha, deleteCommit);
+        if (!deleteResult.success) {
+             // If delete fails, we can't proceed
+             throw new Error(deleteResult.error || 'Failed to delete original file during rename.');
+        }
+        console.log(`Successfully deleted old file "${oldPath}" during rename.`);
+    } catch (error: any) {
+        console.error(`Error deleting old file "${oldPath}" during rename:`, error);
+         // Important: If delete failed, we should stop here.
+        return { success: false, error: `Failed to delete original file: ${error.message}` };
+    }
+
+    // 3. Create the new file with the old content
+     const createCommit = commitMessage || `Rename ${oldPath} to ${newPath} (create step)`;
+    try {
+        // Use createOrUpdateFile without SHA to ensure creation
+        const createResult = await createOrUpdateFile(newPath, oldContent, createCommit);
+        if (createResult.success) {
+            console.log(`Successfully created new file "${newPath}" during rename.`);
+            return { success: true, newSha: createResult.sha };
+        } else {
+             // Create failed after delete - this is the problematic case
+            throw new Error(createResult.error || 'Failed to create new file after deleting old one.');
+        }
+    } catch (error: any) {
+        console.error(`Error creating new file "${newPath}" during rename:`, error);
+         // Return error, but note that the old file is already deleted!
+         // This might require manual intervention by the user.
+        return { success: false, error: `Failed to create new file after deleting old one: ${error.message}` };
+    }
 } 

@@ -381,4 +381,82 @@ export async function renameFile(
          // This might require manual intervention by the user.
         return { success: false, error: `Failed to create new file after deleting old one: ${error.message}` };
     }
+}
+
+/**
+ * Saves the current content of a file as a new commit.
+ * This is essentially a wrapper around createOrUpdateFile for clarity.
+ */
+export async function saveDraft(
+    filePath: string,
+    content: string,
+    currentSha: string | undefined, // Allow undefined SHA for new files
+    commitMessage: string
+): Promise<{ success: boolean; sha: string | null; error?: string; isConflict?: boolean }> {
+    noStore();
+    console.log(`saveDraft called for path: "${filePath}", base SHA: ${currentSha}`);
+
+    // Directly call createOrUpdateFile, passing the current SHA for update check
+    return createOrUpdateFile(filePath, content, commitMessage, currentSha);
+}
+
+/**
+ * Fetches only the latest SHA of a specific file without downloading content.
+ * Uses a HEAD request for efficiency.
+ */
+export async function getLatestFileSha(filePath: string): Promise<{ sha: string | null; error?: string }> {
+  // noStore(); // Might be okay to cache HEAD requests briefly?
+  console.log(`getLatestFileSha called for path: "${filePath}"`);
+
+  let octokit;
+  let repoFullName: string;
+
+  try {
+    octokit = await getUserOctokit();
+    const connection = await checkUserConnectionStatus();
+    if (connection.status !== 'CONNECTED') {
+      return { sha: null, error: 'User is not fully connected.' };
+    }
+    repoFullName = connection.repoFullName;
+  } catch (authError: any) {
+    console.error("Auth/connection error in getLatestFileSha:", authError);
+    return { sha: null, error: `Authentication failed: ${authError.message}` };
+  }
+
+  const [owner, repo] = repoFullName.split('/');
+
+  try {
+    // Use HEAD request to get metadata (including ETag/SHA) without content
+    const { headers } = await octokit.request('HEAD /repos/{owner}/{repo}/contents/{path}', {
+      owner,
+      repo,
+      path: filePath,
+    });
+
+    // Extract SHA from ETag header (ETag is usually "sha")
+    const etag = headers.etag;
+    const sha = etag ? etag.replace(/"/g, '') : null;
+    
+    if (sha) {
+       console.log(`getLatestFileSha successful for "${filePath}", SHA: ${sha}`);
+       return { sha };
+    } else {
+       console.warn(`Could not extract SHA from ETag for "${filePath}". Headers:`, headers);
+       // Fallback to GET if HEAD didn't provide SHA? Or just return error?
+       // For V1, let's return an error if SHA not found in ETag.
+       return { sha: null, error: 'Could not determine file SHA from headers.' };
+    }
+
+  } catch (error: unknown) {
+    if (error instanceof RequestError) {
+      console.error(`Octokit RequestError in getLatestFileSha for "${filePath}" (Status: ${error.status}):`, error.message);
+      if (error.status === 404) {
+        return { sha: null, error: 'File not found.' };
+      }
+      return { sha: null, error: `GitHub API error (${error.status}): ${error.message}` };
+    } else {
+      console.error(`Generic error in getLatestFileSha for "${filePath}":`, error);
+      return { sha: null, error: `An unexpected error occurred: ${(error as Error).message}` };
+    }
+  }
 } 

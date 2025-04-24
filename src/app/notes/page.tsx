@@ -111,6 +111,7 @@ export default function NotesPage() {
                 isNewFile={selectedFile?.isNew}
                 currentFileSha={currentFileSha}
                 onContentLoaded={handleContentLoaded}
+                repoFullName={connection.repoFullName}
               />
             </div>
           </ResizablePanel>

@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Apply base body styles here */
+body {
+  /* @apply bg-background text-foreground; */ /* Remove @apply */
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -64,20 +71,3 @@
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
-
-/* Diff Highlighting Styles */
-.diff-added {
-  background-color: rgba(0, 255, 0, 0.2); 
-}
-.diff-removed {
-  background-color: rgba(255, 0, 0, 0.2);
-  text-decoration: line-through;
-}

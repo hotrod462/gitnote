@@ -99,7 +99,7 @@ const Editor = forwardRef<EditorRef, EditorProps>((
     content: '',
     editorProps: {
       attributes: {
-        class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl focus:outline-none flex-grow p-4 border rounded-b-md overflow-y-auto',
+        class: 'prose dark:prose-invert prose-sm sm:prose-base max-w-none focus:outline-none flex-grow p-4 border rounded-b-md overflow-y-auto',
       },
     },
     editable: viewMode === 'edit' && !isLoading,

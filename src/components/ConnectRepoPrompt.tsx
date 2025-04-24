@@ -28,7 +28,7 @@ export default function ConnectRepoPrompt() {
         </Link>
       </Button>
        <p className="mt-3 text-xs text-muted-foreground">
-         You'll be redirected to GitHub to select repositories and complete the installation.
+         You&apos;ll be redirected to GitHub to select repositories and complete the installation.
        </p>
     </div>
   );

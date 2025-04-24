@@ -5,17 +5,6 @@ import { getFileTree, type FileTreeItem, createFolder, createOrUpdateFile, delet
 import { Skeleton } from "@/components/ui/skeleton";
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogClose
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { 
   DropdownMenu, 
@@ -163,6 +152,9 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   );
 });
 
+// Add display name
+RenderTreeItem.displayName = 'RenderTreeItem';
+
 // Helper function to get parent directory
 const getParentDirectory = (filePath: string | null): string => {
   if (!filePath) return ''; // Root if no file selected
@@ -206,9 +198,9 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
       try {
         const rootItems = await getFileTree(''); 
         setTreeData(rootItems);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Failed to load initial file tree:", err);
-        setError(err.message || "Could not load initial file tree.");
+        setError(err instanceof Error ? err.message : "Could not load initial file tree.");
       } finally {
         setIsInitialLoading(false);
       }
@@ -231,11 +223,17 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
         try {
           const childrenItems = await getFileTree(path);
           setChildrenCache((prev) => ({ ...prev, [path]: childrenItems }));
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(`Failed to load folder content for ${path}:`, err);
           // Optionally set an error state specific to this folder
-          // For simplicity now, just log error and remove from expanded if fetch fails
-          newExpandedFolders.delete(path); 
+          // Add a toast notification on error
+          toast({ 
+              title: "Error Loading Folder",
+              description: `Could not load content for "${path}". ${err instanceof Error ? err.message : 'Please try again.'}`, 
+              variant: "destructive"
+          });
+          // Remove from expanded if fetch fails
+          newExpandedFolders.delete(path);
         } finally {
           setLoadingFolders((prev) => {
             const next = new Set(prev);
@@ -246,52 +244,11 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
       }
     }
     setExpandedFolders(newExpandedFolders);
-  }, [expandedFolders, childrenCache, loadingFolders]);
+  }, [expandedFolders, childrenCache, loadingFolders, toast]);
 
   const handleFileClick = (selection: { path: string; isNew?: boolean }) => {
     onFileSelect(selection);
   };
-
-  const handleFolderClick = (path: string) => {
-    // TODO: Implement folder expansion logic (fetch subtree)
-    console.log("Clicked folder (expansion TBD):", path);
-  };
-
-  // Function to refresh a specific directory (or root)
-  const refreshDirectory = useCallback(async (dirPath: string) => {
-    setLoadingFolders((prev) => new Set(prev).add(dirPath)); // Show loading in parent
-    try {
-      const items = await getFileTree(dirPath);
-      if (dirPath === '') {
-        setTreeData(items);
-      } else {
-        setChildrenCache((prev) => ({ ...prev, [dirPath]: items }));
-        // Ensure parent folder remains expanded after refresh
-        setExpandedFolders((prev) => new Set(prev).add(dirPath)); 
-      }
-    } catch (err: any) {
-      console.error(`Failed to refresh directory ${dirPath}:`, err);
-      toast({
-        title: "Error",
-        description: `Could not refresh directory content: ${err.message}`,
-        variant: "destructive",
-      });
-      // Remove potential failed expansion
-      if (dirPath !== '') {
-         setExpandedFolders((prev) => {
-             const next = new Set(prev);
-             next.delete(dirPath);
-             return next;
-         });
-      }
-    } finally {
-      setLoadingFolders((prev) => {
-        const next = new Set(prev);
-        next.delete(dirPath);
-        return next;
-      });
-    }
-  }, [toast]);
 
   // Handlers to open the creation dialog
   const handleRequestCreateFile = () => {
@@ -351,11 +308,11 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
       } else {
         throw new Error(result.error || `Failed to create ${createItemType}`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`Error creating ${createItemType}:`, err);
       toast({ 
-        title: `Error creating ${createItemType}`, 
-        description: err.message,
+        title: `Error creating ${createItemType}`,
+        description: err instanceof Error ? err.message : 'An unexpected error occurred',
         variant: 'destructive' 
       });
     }
@@ -374,9 +331,13 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
            if (dirPath === '') {
                setTreeData(childrenItems);
            }
-        } catch (err: any) {
-          console.error(`Failed to refresh folder content for ${dirPath}:`, err);
-          toast({ title: `Error refreshing folder ${dirPath}`, description: err.message, variant: 'destructive' });
+        } catch (err: unknown) {
+          console.error(`Failed to fetch and update directory ${dirPath}:`, err);
+          toast({ 
+              title: "Error Updating Directory", 
+              description: `Could not refresh "${dirPath}". ${err instanceof Error ? err.message : 'Please try again.'}`, 
+              variant: "destructive" 
+          });
         } finally {
           setLoadingFolders((prev) => {
             const next = new Set(prev);
@@ -447,12 +408,13 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
           } else {
               throw new Error(result.error || `Failed to delete ${itemType}.`);
           }
-      } catch (err: any) {
+      } catch (err: unknown) {
           console.error(`Failed to delete ${itemType} ${itemPath}:`, err);
-          setDeleteError(err.message);
+          const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+          setDeleteError(message);
           toast({
               title: `Error Deleting ${itemType === 'dir' ? 'Folder' : 'File'}`,
-              description: err.message,
+              description: message,
               variant: "destructive",
           });
           if (parentDir === '') {
@@ -535,11 +497,12 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
           } else {
               throw new Error(result.error || 'Failed to rename file.');
           }
-      } catch (err: any) {
+      } catch (err: unknown) {
           console.error(`Failed to rename file ${oldPath} to ${newPath}:`, err);
+          const message = err instanceof Error ? err.message : 'An unexpected error occurred';
           toast({
               title: "Error Renaming File",
-              description: err.message,
+              description: message,
               variant: "destructive",
           });
            // --- Revert Optimistic UI --- 

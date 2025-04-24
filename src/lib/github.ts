@@ -1,31 +1,6 @@
 import { App } from 'octokit';
-import jwt from 'jsonwebtoken';
 import { createClient } from '@/lib/supabase/server';
 import { checkUserConnectionStatus } from '@/lib/actions/githubConnections';
-
-// Helper to generate the GitHub App JWT
-function generateJwt(): string {
-  const privateKey = process.env.GITHUB_APP_PRIVATE_KEY;
-  const appId = process.env.GITHUB_APP_ID;
-
-  if (!privateKey || !appId) {
-    throw new Error('GitHub App credentials (private key, app ID) are not configured in environment variables.');
-  }
-
-  // Ensure the private key format is correct (replace escaped newlines if necessary)
-  const formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
-
-  // Generate the JWT, expires in 10 minutes (GitHub recommendation)
-  return jwt.sign(
-    {},
-    formattedPrivateKey,
-    {
-      issuer: appId,
-      expiresIn: '10m', // 10 minutes
-      algorithm: 'RS256',
-    }
-  );
-}
 
 // Helper to get an Octokit instance authenticated as the App
 // This is used for app-level operations like listing installations or getting installation tokens
@@ -54,13 +29,9 @@ export async function getInstallationAccessToken(installationId: number): Promis
       installation_id: installationId,
     });
     return data.token;
-  } catch (error: any) {
-     console.error(`Error getting installation access token for installation ${installationId}:`, error);
-     // Check for specific errors if needed, e.g., installation not found (404)
-     if (error.status === 404) {
-         throw new Error(`GitHub App installation not found: ${installationId}`);
-     }
-     throw new Error(`Failed to get installation access token: ${error.message}`);
+  } catch (error: unknown) {
+    console.error(`Failed to get installation access token for installation ${installationId}:`, error);
+    throw new Error("Could not generate installation access token.");
   }
 }
 

@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Button } from "@/components/ui/button";
 import { 
   AlertDialog, 
   AlertDialogAction, 
@@ -28,7 +27,7 @@ export default function DeleteConfirmationDialog({
   open, 
   onOpenChange, 
   itemToDelete, 
-  deleteError, 
+  deleteError,
   onConfirmDelete,
   onClearError
 }: DeleteConfirmationDialogProps) {
@@ -48,9 +47,10 @@ export default function DeleteConfirmationDialog({
     try {
       await onConfirmDelete();
       // Success implicitly handled by parent (dialog closes, toast shown)
-    } catch (error) {
-       // Error handled by parent (toast shown, error state set)
-       // Dialog remains open due to parent state not changing `open` prop
+    } catch (error: unknown) {
+      // Error state is set by parent if onConfirmDelete throws/returns error
+      // Dialog remains open due to parent state not changing `open` prop
+      console.error("Error during delete confirmation:", error); // Log error for debugging
     } finally {
       // Only set isDeleting false if dialog is still potentially open (i.e., an error occurred)
       // If successful, parent will close the dialog via onOpenChange before this runs ideally

@@ -61,7 +61,6 @@ const Editor = forwardRef<EditorRef, EditorProps>((
 ) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
   const [externalChangeDetected, setExternalChangeDetected] = useState(false);
   const [isCheckingSha, setIsCheckingSha] = useState(false);
@@ -140,9 +139,9 @@ const Editor = forwardRef<EditorRef, EditorProps>((
          setError(`File not found on GitHub: ${filePath}`);
          editor.commands.clearContent();
        }
-    } catch (err: any) {
+    } catch (err: unknown) {
        console.error("Failed to load file content:", err);
-       setError(err.message || "Could not load file content.");
+       setError(err instanceof Error ? err.message : "Could not load file content.");
        editor.commands.clearContent();
     } finally {
       setIsLoading(false);
@@ -169,9 +168,9 @@ const Editor = forwardRef<EditorRef, EditorProps>((
          setError(`File content not found for commit ${commitSha.substring(0, 7)}`);
          editor.commands.clearContent();
        }
-    } catch (err: any) {
+    } catch (err: unknown) {
        console.error("Failed to load historical file content:", err);
-       setError(err.message || "Could not load historical file content.");
+       setError(err instanceof Error ? err.message : "Could not load historical file content.");
        editor.commands.clearContent();
     } finally {
       setIsLoading(false);
@@ -345,7 +344,6 @@ const Editor = forwardRef<EditorRef, EditorProps>((
       toast.error("Save failed: Editor not ready or not in edit mode.");
       return;
     }
-    setIsSaving(true);
     const toastId = toast.loading(`Saving draft: ${selectedFilePath}`);
     try {
       // Retrieve Markdown from IndexedDB
@@ -371,17 +369,16 @@ const Editor = forwardRef<EditorRef, EditorProps>((
          // Proceed with content retrieved from IndexedDB (expected path)
          await saveToServer(selectedFilePath, contentToSave, currentFileSha, commitMessage, toastId);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error("Failed to save draft (catch block in handleConfirmSave):", err);
-        toast.error(`Error saving draft: ${err.message || 'An unexpected error occurred'}`, { id: toastId });
+        const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+        toast.error(`Error saving draft: ${message}`, { id: toastId });
         // Capture generic save error
         posthog.capture('note_save_failed', {
              file_path: selectedFilePath,
-             error: err.message,
+             error: message,
              is_conflict: false // Unlikely a conflict if caught here
          });
-    } finally {
-        setIsSaving(false);
     }
   };
 

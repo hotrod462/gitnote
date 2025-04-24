@@ -6,7 +6,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { getInstallationRepositories, saveRepositorySelection } from '@/lib/actions/githubConnections';
 import { Skeleton } from "@/components/ui/skeleton"
-import { useRouter } from 'next/navigation';
 
 interface SelectRepoPromptProps {
   installationId: number;
@@ -23,7 +22,6 @@ export default function SelectRepoPrompt({ installationId }: SelectRepoPromptPro
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, startTransition] = useTransition();
-  const router = useRouter();
 
   useEffect(() => {
     async function fetchRepos() {
@@ -32,9 +30,9 @@ export default function SelectRepoPrompt({ installationId }: SelectRepoPromptPro
       try {
         const repos = await getInstallationRepositories(installationId);
         setRepositories(repos);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Failed to fetch repositories:", err);
-        setError(err.message || "Failed to load repositories. Please try again later.");
+        setError(err instanceof Error ? err.message : "Could not load repositories.");
       } finally {
         setIsLoading(false);
       }

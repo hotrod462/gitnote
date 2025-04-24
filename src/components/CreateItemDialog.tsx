@@ -47,10 +47,10 @@ export default function CreateItemDialog({
     try {
       await onCreateConfirm(itemName.trim());
       // Success is handled by the parent (closing dialog, showing toast)
-      // No need to call onOpenChange(false) here as parent controls it based on success
-    } catch (error) {
-       // Error is handled by the parent (showing toast)
-       // Keep dialog open on error? Parent decides.
+    } catch (error: unknown) {
+      // Let the parent handler display the toast/error
+      // Log here for debugging in case parent doesn't handle or log
+      console.error(`Error creating ${itemType} '${itemName.trim()}':`, error);
     } finally {
       setIsCreating(false);
     }

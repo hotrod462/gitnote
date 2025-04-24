@@ -17,8 +17,13 @@ interface HistoryPopoverProps {
   onSelectCommit: (sha: string) => void;
 }
 
-// Helper function to fetch history
-async function fetchHistory(filePath: string, setIsLoading: Function, setError: Function, setCommits: Function) {
+// Helper function to fetch history with specific types
+async function fetchHistory(
+    filePath: string, 
+    setIsLoading: React.Dispatch<React.SetStateAction<boolean>>, 
+    setError: React.Dispatch<React.SetStateAction<string | null>>, 
+    setCommits: React.Dispatch<React.SetStateAction<CommitInfo[]>>
+) {
     console.log(`HistoryPopover fetching history for: ${filePath}`);
     setIsLoading(true);
     setError(null);
@@ -30,9 +35,9 @@ async function fetchHistory(filePath: string, setIsLoading: Function, setError: 
       } else {
         setCommits(result.commits);
       }
-    } catch (err: any) {
-       console.error("Failed to fetch commit history:", err);
-       setError(err.message || "An unexpected error occurred.");
+    } catch (err: unknown) {
+       console.error(`Failed to fetch commits for ${filePath}:`, err);
+       setError(err instanceof Error ? err.message : 'Could not load history');
     } finally {
       setIsLoading(false);
     }

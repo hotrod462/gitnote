@@ -42,6 +42,13 @@ export default function CommitMessageModal({
     }
   }, [open, fileName]);
 
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (commitMessage.trim()) {
+      handleConfirm();
+    }
+  };
+
   const handleConfirm = async () => {
     const trimmedMessage = commitMessage.trim();
     if (!trimmedMessage) return;
@@ -52,9 +59,10 @@ export default function CommitMessageModal({
       await onConfirmCommit(trimmedMessage);
       // Success handled by parent (closes dialog, shows toast)
       // onOpenChange(false); // Let parent handle closing on success
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Commit failed:", err);
-      setError(err.message || "Failed to save changes.");
+      // Check if err is an Error instance before accessing message
+      setError(err instanceof Error ? err.message : "Failed to save changes.");
       // Keep dialog open on error
     } finally {
       // Only set loading false if dialog is still open (error occurred)
@@ -83,35 +91,35 @@ export default function CommitMessageModal({
 Enter a brief description of the changes you made (commit message).
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid w-full items-center gap-1.5">
-            <Label htmlFor="commit-message">Commit Message</Label>
-            <Input 
-              id="commit-message" 
-              value={commitMessage} 
-              onChange={(e) => setCommitMessage(e.target.value)}
-              placeholder="e.g., Update introduction section"
-              disabled={isCommitting}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); }}
-            />
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-4 py-4">
+            <div className="grid w-full items-center gap-1.5">
+              <Label htmlFor="commit-message">Commit Message</Label>
+              <Input 
+                id="commit-message" 
+                value={commitMessage} 
+                onChange={(e) => setCommitMessage(e.target.value)}
+                placeholder="e.g., Update introduction section"
+                disabled={isCommitting}
+              />
+            </div>
+             {error && (
+                <p className="text-sm text-destructive">Error: {error}</p>
+             )}
           </div>
-           {error && (
-              <p className="text-sm text-destructive">Error: {error}</p>
-           )}
-        </div>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={isCommitting}>Cancel</Button>
-          </DialogClose>
-          <Button 
-            type="submit" 
-            onClick={handleConfirm} 
-            disabled={isCommitting || !commitMessage.trim()}
-          >
-            {isCommitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Save Changes
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={isCommitting}>Cancel</Button>
+            </DialogClose>
+            <Button 
+              type="submit" 
+              disabled={isCommitting || !commitMessage.trim()}
+            >
+              {isCommitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

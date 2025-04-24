@@ -50,7 +50,7 @@ export async function getFileTree(path: string = ''): Promise<FileTreeItem[]> {
     }
     repoFullName = connection.repoFullName;
 
-  } catch (authError: any) {
+  } catch (authError: unknown) {
     console.error("Authentication or connection error in getFileTree:", authError);
     // Re-throw auth-related errors to be handled by the component
     throw authError;
@@ -70,15 +70,35 @@ export async function getFileTree(path: string = ''): Promise<FileTreeItem[]> {
     });
 
     // Ensure data is an array (it can be a single object for files)
-    const contents = Array.isArray(data) ? data : [data];
+    const contents: unknown[] = Array.isArray(data) ? data : [data];
 
     // Process and return tree data in our desired format
-    const treeItems: FileTreeItem[] = contents.map((item: any) => ({
-      type: item.type, // 'file' or 'dir'
-      name: item.name,
-      path: item.path,
-      sha: item.sha, // Include SHA
-    }));
+    const treeItems: FileTreeItem[] = contents.map((item: unknown): FileTreeItem | null => {
+      // Type predicate to check the item structure
+      function isPotentialFileTreeItem(obj: unknown): obj is { type: string; name: string; path: string; sha?: string } {
+        return (
+          typeof obj === 'object' && 
+          obj !== null && 
+          'type' in obj && typeof obj.type === 'string' && 
+          'name' in obj && typeof obj.name === 'string' && 
+          'path' in obj && typeof obj.path === 'string' &&
+          (!('sha' in obj) || typeof obj.sha === 'string') // sha is optional or string
+        );
+      }
+
+      if(isPotentialFileTreeItem(item)) {
+        const itemType = item.type === 'dir' ? 'dir' : 'file';
+        return {
+          type: itemType,
+          name: String(item.name),
+          path: String(item.path),
+          sha: item.sha ? String(item.sha) : undefined,
+        }
+      } else {
+        console.warn("Skipping invalid item in getFileTree response:", item);
+        return null; // Or throw an error
+      }
+    }).filter((item): item is FileTreeItem => item !== null); // Filter out nulls
 
     // Sort items: folders first, then files, alphabetically
     treeItems.sort((a, b) => {
@@ -105,7 +125,9 @@ export async function getFileTree(path: string = ''): Promise<FileTreeItem[]> {
     } else {
         // Handle generic errors
         console.error(`Generic error fetching file tree for path "${path}":`, error);
-        throw new Error(`Could not load directory content.`);
+        // Use unknown for generic catch
+        const message = error instanceof Error ? error.message : 'Could not load directory content.';
+        throw new Error(message);
     }
   }
 }
@@ -117,7 +139,7 @@ export async function getFileTree(path: string = ''): Promise<FileTreeItem[]> {
 export async function getFileContent(
     filePath: string, 
     ref?: string // Optional ref (e.g., commit SHA) to fetch historical content
-): Promise<{ content: string; sha: string } | null> { // Note: SHA returned might be the blob SHA, not commit SHA when ref is used
+): Promise<{ content: string; sha: string } | null> { // Allow null return type
   noStore();
   console.log(`getFileContent called for path: "${filePath}", ref: ${ref || 'default branch'}`);
   
@@ -131,7 +153,7 @@ export async function getFileContent(
       throw new Error('User is not fully connected.');
     }
     repoFullName = connection.repoFullName;
-  } catch (authError: any) {
+  } catch (authError: unknown) {
     console.error("Auth/connection error in getFileContent:", authError);
     throw authError; // Re-throw to be handled by caller
   }
@@ -163,10 +185,9 @@ export async function getFileContent(
      if (error instanceof RequestError) {
         console.error(`Octokit RequestError fetching file content "${filePath}" (Status: ${error.status}):`, error.message);
         if (error.status === 404) {
-            // File not found
             console.log(`File "${filePath}" not found.`);
-            // Return null or throw specific error based on desired handling
-            return null; 
+            // Explicitly return null as allowed by the signature
+            return null;
         }
          throw new Error(`GitHub API error (${error.status}): Could not load file content for "${filePath}".`);
     } else {
@@ -201,9 +222,10 @@ export async function createOrUpdateFile(
       return { success: false, sha: null, error: 'User is not fully connected.' };
     }
     repoFullName = connection.repoFullName;
-  } catch (authError: any) {
+  } catch (authError: unknown) {
     console.error("Auth/connection error in createOrUpdateFile:", authError);
-    return { success: false, sha: null, error: `Authentication failed: ${authError.message}` };
+    const message = authError instanceof Error ? authError.message : 'Authentication failed';
+    return { success: false, sha: null, error: `Authentication failed: ${message}` };
   }
 
   const [owner, repo] = repoFullName.split('/');
@@ -263,9 +285,10 @@ export async function deleteFile(
       return { success: false, error: 'User is not fully connected.' };
     }
     repoFullName = connection.repoFullName;
-  } catch (authError: any) {
+  } catch (authError: unknown) {
     console.error("Auth/connection error in deleteFile:", authError);
-    return { success: false, error: `Authentication failed: ${authError.message}` };
+    const message = authError instanceof Error ? authError.message : 'Authentication failed';
+    return { success: false, error: `Authentication failed: ${message}` };
   }
 
   const [owner, repo] = repoFullName.split('/');
@@ -356,13 +379,13 @@ export async function renameFile(
     try {
         const contentResult = await getFileContent(oldPath);
         if (!contentResult) {
-            throw new Error('Original file not found.');
+            throw new Error(`Original file not found or could not be read at path: ${oldPath}`);
         }
         oldContent = contentResult.content;
-        // We already have the SHA from the parameter
-    } catch (error: any) {
+        // SHA is passed as parameter, no need to get from contentResult here
+    } catch (error: unknown) {
         console.error(`Error getting content for rename source "${oldPath}":`, error);
-        return { success: false, error: `Could not read original file: ${error.message}` };
+        return { success: false, error: `Could not read original file: ${error instanceof Error ? error.message : 'An unknown error occurred'}` };
     }
 
     // 2. Delete the old file
@@ -374,10 +397,10 @@ export async function renameFile(
              throw new Error(deleteResult.error || 'Failed to delete original file during rename.');
         }
         console.log(`Successfully deleted old file "${oldPath}" during rename.`);
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error(`Error deleting old file "${oldPath}" during rename:`, error);
          // Important: If delete failed, we should stop here.
-        return { success: false, error: `Failed to delete original file: ${error.message}` };
+        return { success: false, error: `Failed to delete original file: ${error instanceof Error ? error.message : 'An unknown error occurred'}` };
     }
 
     // 3. Create the new file with the old content
@@ -392,11 +415,11 @@ export async function renameFile(
              // Create failed after delete - this is the problematic case
             throw new Error(createResult.error || 'Failed to create new file after deleting old one.');
         }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error(`Error creating new file "${newPath}" during rename:`, error);
          // Return error, but note that the old file is already deleted!
          // This might require manual intervention by the user.
-        return { success: false, error: `Failed to create new file after deleting old one: ${error.message}` };
+        return { success: false, error: `Failed to create new file after deleting old one: ${error instanceof Error ? error.message : 'An unknown error occurred'}` };
     }
 }
 
@@ -435,9 +458,10 @@ export async function getLatestFileSha(filePath: string): Promise<{ sha: string 
       return { sha: null, error: 'User is not fully connected.' };
     }
     repoFullName = connection.repoFullName;
-  } catch (authError: any) {
+  } catch (authError: unknown) {
     console.error("Auth/connection error in getLatestFileSha:", authError);
-    return { sha: null, error: `Authentication failed: ${authError.message}` };
+    const message = authError instanceof Error ? authError.message : 'Authentication failed';
+    return { sha: null, error: `Authentication failed: ${message}` };
   }
 
   const [owner, repo] = repoFullName.split('/');
@@ -497,12 +521,12 @@ export async function getCommitsForFile(filePath: string): Promise<{ commits: Co
     octokit = await getUserOctokit();
     const connection = await checkUserConnectionStatus();
     if (connection.status !== 'CONNECTED') {
-      return { commits: [], error: 'User is not fully connected.' };
+      throw new Error('User is not fully connected.');
     }
     repoFullName = connection.repoFullName;
-  } catch (authError: any) {
+  } catch (authError: unknown) {
     console.error("Auth/connection error in getCommitsForFile:", authError);
-    return { commits: [], error: `Authentication failed: ${authError.message}` };
+    return { commits: [], error: `Authentication failed: ${authError instanceof Error ? authError.message : 'An unknown error occurred'}` };
   }
 
   const [owner, repo] = repoFullName.split('/');
@@ -515,16 +539,50 @@ export async function getCommitsForFile(filePath: string): Promise<{ commits: Co
       per_page: 50, // Limit number of commits fetched for performance
     });
 
-    // Format the commit data
-    const commits: CommitInfo[] = data.map((commit: any) => ({
-      sha: commit.sha,
-      message: commit.commit.message,
-      author: {
-         name: commit.commit.author?.name,
-         date: commit.commit.author?.date,
-      },
-      html_url: commit.html_url,
-    }));
+    // Type the data
+    const commitsData: unknown[] = data;
+
+    // Validate and map the data
+    const commits: CommitInfo[] = commitsData.map((commit: unknown): CommitInfo | null => {
+      // Type predicate for the overall commit structure from the API list
+      function isPotentialCommit(obj: unknown): obj is { sha: string; commit: unknown; html_url: string } {
+        return (
+          typeof obj === 'object' && 
+          obj !== null && 
+          'sha' in obj && typeof obj.sha === 'string' &&
+          'commit' in obj && typeof obj.commit === 'object' && obj.commit !== null && // Check commit is an object
+          'html_url' in obj && typeof obj.html_url === 'string'
+        );
+      }
+
+      // Type predicate for the nested commit details
+      function isPotentialCommitDetails(obj: unknown): obj is { message: string; author?: { name?: string; date?: string } } {
+        return (
+            typeof obj === 'object' && 
+            obj !== null &&
+            'message' in obj && typeof obj.message === 'string' &&
+            (!('author' in obj) || // author is optional
+              (typeof obj.author === 'object' && obj.author !== null &&
+                (!('name' in obj.author) || typeof obj.author.name === 'string') && // author.name is optional or string
+                (!('date' in obj.author) || typeof obj.author.date === 'string'))) // author.date is optional or string
+        );
+      }
+
+      if (isPotentialCommit(commit) && isPotentialCommitDetails(commit.commit)) {
+        return {
+          sha: commit.sha,
+          message: commit.commit.message,
+          author: commit.commit.author ? {
+            name: commit.commit.author.name,
+            date: commit.commit.author.date,
+          } : undefined,
+          html_url: commit.html_url,
+        };
+      } else {
+        console.warn('Skipping invalid commit data structure:', commit);
+        return null;
+      }
+    }).filter((commit): commit is CommitInfo => commit !== null);
 
     console.log(`getCommitsForFile successful for "${filePath}", fetched ${commits.length} commits.`);
     return { commits };
@@ -535,14 +593,17 @@ export async function getCommitsForFile(filePath: string): Promise<{ commits: Co
       // Handle common errors like 404 (file path not found in history?)
       if (error.status === 404) {
         // Check if it's because the file itself doesn't exist or has no history
-        // For now, return empty array
+        // For now, return empty array with error
         console.warn(`Commit history not found for "${filePath}". File might be new or path incorrect.`);
         return { commits: [], error: 'Commit history not found for this file.' };
       }
+      // Explicitly return for other RequestErrors
       return { commits: [], error: `GitHub API error (${error.status}): ${error.message}` };
     } else {
+      // Explicitly return for generic errors
       console.error(`Generic error in getCommitsForFile for "${filePath}":`, error);
-      return { commits: [], error: `An unexpected error occurred: ${(error as Error).message}` };
+      const message = error instanceof Error ? error.message : 'An unexpected error occurred';
+      return { commits: [], error: `An unexpected error occurred: ${message}` };
     }
   }
-} 
+}

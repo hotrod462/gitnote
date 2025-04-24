@@ -53,9 +53,9 @@ export default function RenameDialog({
     try {
       await onRenameConfirm(trimmedNewName);
       // Success implicitly handled by parent (dialog closes, toast shown)
-    } catch (error) {
-       // Error handled by parent (toast shown)
-       // Keep dialog open on error? Parent decides.
+    } catch (error: unknown) {
+      // Error is handled by parent
+      console.error(`Error renaming item '${itemToRename?.name}' to '${trimmedNewName}':`, error); // Log error
     } finally {
        // Only set isRenaming false if dialog is still potentially open (i.e., an error occurred)
        // This prevents flicker if parent closes dialog immediately on success
@@ -70,9 +70,9 @@ export default function RenameDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Rename File</DialogTitle>
+          <DialogTitle>Rename {itemToRename?.type === 'dir' ? 'Folder' : 'File'}</DialogTitle>
           <DialogDescription>
-            Enter a new name for the file "{itemToRename?.name}".
+            Enter a new name for the {itemToRename?.type === 'dir' ? 'folder' : 'file'} &quot;{itemToRename?.name}&quot;.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -85,7 +85,7 @@ export default function RenameDialog({
               value={newName} 
               onChange={(e) => setNewName(e.target.value)}
               className="col-span-3" 
-              placeholder="new-filename.md"
+              placeholder={itemToRename?.type === 'dir' ? 'MyRenamedFolder' : 'my-renamed-note.md'}
               disabled={isRenaming}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
             />

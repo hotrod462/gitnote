@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { unstable_noStore as noStore } from 'next/cache'; // Prevent caching of this dynamic data
-import { getAppOctokit, getInstallationAccessToken } from '@/lib/github'; // Import the App Octokit helper
+import { getInstallationAccessToken } from '@/lib/github'; // Import the App Octokit helper
 import { Octokit } from 'octokit'; 
 import { revalidatePath } from 'next/cache'; // Needed to trigger UI refresh
 
@@ -13,144 +13,141 @@ export type ConnectionStatus =
   | { status: 'CONNECTED', installationId: number, repoFullName: string };
 
 /**
- * Checks the user_connections table for the current user's status.
- * Determines if they have installed the GitHub App and selected a repository.
+ * Checks the user's connection status by querying the Supabase table.
  */
 export async function checkUserConnectionStatus(): Promise<ConnectionStatus> {
-  noStore(); // Ensure this runs dynamically on each request
-  const supabase = createClient();
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    // This should ideally not happen if called from a protected route,
-    // but handle defensively.
-    console.error("User not found while checking connection status:", userError);
-    // Returning NO_CONNECTION might be misleading, but it prevents further action.
-    // Consider throwing an error or redirecting in the page component if this occurs.
-    return { status: 'NO_CONNECTION' }; 
-  }
-
-  const { data, error: dbError } = await supabase
-    .from('user_connections')
-    .select('github_installation_id, repository_full_name')
-    .eq('user_id', user.id)
-    .maybeSingle(); // Use maybeSingle() as user might not have a row yet
-
-  if (dbError) {
-    console.error('Error fetching user connection:', dbError);
-    // Treat database errors as if no connection exists for now
-    // Might need more robust error handling/reporting
-    return { status: 'NO_CONNECTION' };
-  }
-
-  if (!data) {
-    // No row found for this user
-    return { status: 'NO_CONNECTION' };
-  }
-
-  if (data.github_installation_id && !data.repository_full_name) {
-    // Row exists with installation ID, but no repository selected yet
-    return { 
-      status: 'CONNECTION_NO_REPO', 
-      installationId: data.github_installation_id 
-    };
-  }
-
-  if (data.github_installation_id && data.repository_full_name) {
-    // User is fully connected
-    return { 
-      status: 'CONNECTED', 
-      installationId: data.github_installation_id,
-      repoFullName: data.repository_full_name 
-    };
-  }
-
-  // Fallback case - should ideally not be reached if data structure is consistent
-  console.warn('Unexpected state in user_connections for user:', user.id, data);
-  return { status: 'NO_CONNECTION' };
-} 
-
-/**
- * Fetches the list of repositories accessible by a specific installation ID.
- */
-export async function getInstallationRepositories(installationId: number): Promise<{ id: number; full_name: string }[]> {
-  noStore(); // Prevent caching
-  
-  try {
-    // 1. Get an installation access token
-    const installationToken = await getInstallationAccessToken(installationId);
-
-    // 2. Create an Octokit instance authenticated with the installation token
-    const installationOctokit = new Octokit({ auth: installationToken });
-    
-    // 3. Fetch repositories accessible by this specific installation token
-    // Note: Use GET /installation/repositories endpoint when authenticated as installation
-    // See: https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-app-installation
-    const { data } = await installationOctokit.request('GET /installation/repositories', {
-        per_page: 100, // Fetch up to 100 repos, handle pagination if needed later
-    });
-
-    if (!data.repositories) {
-      console.warn('No repositories found for installation:', installationId);
-      return [];
-    }
-
-    // Return only the necessary fields
-    return data.repositories.map(repo => ({ 
-      id: repo.id, 
-      full_name: repo.full_name 
-    }));
-
-  } catch (error: any) {
-    console.error(`Error fetching repositories for installation ${installationId}:`, error);
-    if (error.status === 404) {
-      // This might indicate the token is invalid or install removed
-      throw new Error(`Installation not found or access revoked: ${installationId}`);
-    }
-    // Re-throw a generic error, potentially masking the specific Octokit error
-    // Consider logging the original error (already done) and maybe returning a specific error code/message
-    throw new Error(`Failed to fetch repositories. Please try again later.`); 
-  }
-}
-
-/**
- * Saves the user's selected repository to the user_connections table.
- */
-export async function saveRepositorySelection(installationId: number, repoFullName: string): Promise<{ success: boolean; error?: string }> {
   noStore();
   const supabase = createClient();
 
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    console.error("User not found while saving repository selection:", userError);
-    return { success: false, error: "Authentication required." };
+    console.error("Error fetching user:", userError);
+    return { status: 'NO_CONNECTION' }; // Treat error fetching user as no connection
   }
 
-  // Use Admin client to bypass RLS if needed, although updating own row might be allowed by policy
-  // Let's use the standard client first, assuming RLS allows the user to update their own row 
-  // if github_installation_id also matches (or just based on user_id match)
-  // If this fails due to RLS, we can switch to the admin client.
-  const { error: updateError } = await supabase
+  const { data: connection, error: connectionError } = await supabase
     .from('user_connections')
-    .update({ repository_full_name: repoFullName, updated_at: new Date().toISOString() })
+    .select('github_installation_id, repository_full_name')
     .eq('user_id', user.id)
-    // Optional: Add extra safety check, though user_id is UNIQUE
-    // .eq('github_installation_id', installationId) 
-    .select() // Required to check if update actually happened (returns updated rows)
-    .single(); // Expect exactly one row to be updated
+    .single();
 
-  if (updateError) {
-    console.error('Error updating user connection with repository:', updateError);
-    // TODO: Check for specific errors (e.g., RLS violation, row not found)
-    return { success: false, error: `Failed to save repository selection: ${updateError.message}` };
+  if (connectionError || !connection) {
+    if (connectionError && connectionError.code !== 'PGRST116') { // Ignore 'Row not found' error, which is expected
+        console.error("Error fetching user connection:", connectionError);
+    }
+    // If no record found or other error, assume no connection established yet
+    return { status: 'NO_CONNECTION' };
   }
 
-  console.log(`Successfully saved repository ${repoFullName} for user ${user.id}`);
-  
-  // Revalidate the notes path to force re-fetching of connection status on the page
-  revalidatePath('/notes'); 
+  const installationId = connection.github_installation_id;
+  const repoFullName = connection.repository_full_name;
 
-  return { success: true };
-} 
+  if (!installationId) {
+    // This case should ideally not happen if the row exists, but handle defensively
+    console.warn(`User ${user.id} has connection record but no installation ID.`);
+    return { status: 'NO_CONNECTION' };
+  }
+
+  if (!repoFullName) {
+    console.log(`User ${user.id} has connection with installation ID ${installationId} but no repository selected.`);
+    return { status: 'CONNECTION_NO_REPO', installationId };
+  }
+
+  console.log(`User ${user.id} is connected with installation ID ${installationId} and repository ${repoFullName}.`);
+  return { status: 'CONNECTED', installationId, repoFullName };
+}
+
+interface Repository {
+    id: number;
+    full_name: string;
+}
+
+/**
+ * Fetches the list of repositories accessible by a specific installation ID.
+ */
+export async function getInstallationRepositories(installationId: number): Promise<Repository[]> {
+  noStore();
+  console.log(`Fetching repositories for installation ID: ${installationId}`);
+  
+  try {
+    // We need an *installation* access token for this, not just an app token
+    const installationToken = await getInstallationAccessToken(installationId);
+    if (!installationToken) {
+        throw new Error("Could not retrieve installation access token.");
+    }
+
+    const octokit = new Octokit({ auth: installationToken });
+
+    // Fetch repositories for the installation
+    // Note: This uses the installation token, so it only lists repos the installation *can* access.
+    const response = await octokit.request('GET /installation/repositories'); 
+    // TODO: Add pagination if needed, though unlikely for initial selection
+
+    console.log(`Fetched ${response.data.repositories.length} repositories for installation ${installationId}`);
+    // Add type check for repo object
+    return response.data.repositories.map((repo: unknown) => {
+      if(typeof repo === 'object' && repo !== null && 'id' in repo && 'full_name' in repo) {
+        return {
+          id: Number(repo.id),
+          full_name: String(repo.full_name),
+        }
+      } else {
+        console.warn("Skipping invalid repository object:", repo);
+        return null;
+      }
+    }).filter((repo): repo is Repository => repo !== null); // Filter out nulls
+
+  } catch (error: unknown) { // Use unknown
+     console.error(`Failed to fetch repositories for installation ${installationId}:`, error);
+     // Improve error handling - check for specific Octokit errors
+     if (error instanceof Error && error.message.includes('404')) {
+       // This might indicate the token is invalid or install removed
+       throw new Error(`Installation not found or access revoked: ${installationId}`);
+     }
+     // Re-throw a generic error, potentially masking the specific Octokit error
+     // Consider logging the original error (already done) and maybe returning a specific error code/message
+     throw new Error(`Failed to fetch repositories. Please try again later.`); 
+   }
+ }
+ 
+ /**
+  * Saves the user's selected repository to the user_connections table.
+  */
+ export async function saveRepositorySelection(installationId: number, repoFullName: string): Promise<{ success: boolean; error?: string }> {
+   noStore();
+   const supabase = createClient();
+ 
+   const { data: { user }, error: userError } = await supabase.auth.getUser();
+ 
+   if (userError || !user) {
+     console.error("User not found while saving repository selection:", userError);
+     return { success: false, error: "Authentication required." };
+   }
+ 
+   // Use Admin client to bypass RLS if needed, although updating own row might be allowed by policy
+   // Let's use the standard client first, assuming RLS allows the user to update their own row 
+   // if github_installation_id also matches (or just based on user_id match)
+   // If this fails due to RLS, we can switch to the admin client.
+   const { error: updateError } = await supabase
+     .from('user_connections')
+     .update({ repository_full_name: repoFullName, updated_at: new Date().toISOString() })
+     .eq('user_id', user.id)
+     // Optional: Add extra safety check, though user_id is UNIQUE
+     // .eq('github_installation_id', installationId) 
+     .select() // Required to check if update actually happened (returns updated rows)
+     .single(); // Expect exactly one row to be updated
+ 
+   if (updateError) {
+     console.error('Error updating user connection with repository:', updateError);
+     // TODO: Check for specific errors (e.g., RLS violation, row not found)
+     return { success: false, error: `Failed to save repository selection: ${updateError.message}` };
+   }
+ 
+   console.log(`Successfully saved repository ${repoFullName} for user ${user.id}`);
+   
+   // Revalidate the notes path to force re-fetching of connection status on the page
+   revalidatePath('/notes'); 
+ 
+   return { success: true };
+ } 

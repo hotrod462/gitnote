@@ -15,6 +15,7 @@ import {
 import FileTree from '@/components/FileTree';
 import Editor, { EditorRef } from '@/components/Editor';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
 
 // Simplify view modes
 type ViewMode = 'edit' | 'history_view';
@@ -33,6 +34,7 @@ export default function NotesPage() {
   const [historicalCommitSha, setHistoricalCommitSha] = useState<string | null>(null);
   const router = useRouter();
   const editorRef = useRef<EditorRef>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     async function fetchConnectionStatus() {
@@ -42,13 +44,18 @@ export default function NotesPage() {
         setConnection(status);
       } catch (error) {
         console.error("Failed to fetch connection status:", error);
+        toast({
+            title: "Connection Error",
+            description: "Could not check repository connection status. Please try again later.",
+            variant: "destructive"
+        });
         setConnection({ status: 'NO_CONNECTION' });
       } finally {
         setIsLoadingConnection(false);
       }
     }
     fetchConnectionStatus();
-  }, []);
+  }, [toast]);
 
   const handleSignOut = async () => {
     await signOut();

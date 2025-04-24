@@ -16,42 +16,105 @@ interface DiffPluginState {
   decorations: DecorationSet;
 }
 
-// Helper function to calculate decorations
+// Helper function to calculate decorations using node iteration
 function calculateDecorations(diffResult: Change[] | null, doc: Node): DecorationSet {
-  if (!diffResult) return DecorationSet.empty;
+  // --- Temporarily Disabled --- 
+  /*
+  if (!diffResult) {
+    console.log("calculateDecorations (node-aware): No diffResult provided.");
+    return DecorationSet.empty;
+  }
 
-  console.log("DiffHighlightExtension: Calculating decorations", diffResult);
+  console.log("calculateDecorations (node-aware): Starting calculation", { diffLength: diffResult.length, docSize: doc.content.size });
   const decorations: Decoration[] = [];
-  let currentDocPos = 0; // 0-based for calculations
+  
+  let diffPartIndex = 0;       // Current index in diffResult array
+  let diffPartOffset = 0;      // Offset within the current diffResult[diffPartIndex].value string
+  let accumulatedDocPos = 1;   // Track the position in the document (1-based)
 
-  diffResult.forEach((part) => {
-    const partText = part.value;
-    const partLength = partText.length;
-    let style = '';
-
-    if (part.added) {
-      style = 'background-color: rgba(0, 255, 0, 0.2);';
-    } else if (part.removed) {
-      // Skip removed parts
+  // Iterate through the document nodes
+  doc.descendants((node, pos) => {
+    if (diffPartIndex >= diffResult.length) return false; // Stop if we've processed all diff parts
+    
+    // Focus only on text nodes with actual content
+    if (!node.isText || node.text === null || node.text === undefined) { 
+        // Skip non-text nodes or text nodes without content
+        return true; // Continue descending
     }
 
-    if (style) {
-      const startPos = currentDocPos + 1; // 1-based for decorations
-      const endPos = startPos + partLength;
-      if (startPos < endPos && endPos <= doc.content.size + 1) {
-        console.log(`Adding decoration: diff-added from ${startPos} to ${endPos}`);
-        decorations.push(Decoration.inline(startPos, endPos, { style: style }));
-      } else {
-        console.warn(`Skipping decoration: Invalid range ${startPos}-${endPos} for doc size ${doc.content.size}`);
+    let nodeOffset = 0; // Offset within the current text node
+    // We know node.text is a string here due to the check above
+    const nodeText: string = node.text;
+    const nodeEndPos = pos + node.nodeSize;
+
+    // console.log(`Node Iter: pos=${pos}, size=${node.nodeSize}, endPos=${nodeEndPos}, text="${nodeText.substring(0,10)}...", currentDiffIdx=${diffPartIndex}`);
+
+    // Process the current text node against potentially multiple diff parts
+    while (nodeOffset < nodeText.length && diffPartIndex < diffResult.length) {
+      const currentDiffPart = diffResult[diffPartIndex];
+      const remainingDiffPartText = currentDiffPart.value.substring(diffPartOffset);
+      const remainingNodeText = nodeText.substring(nodeOffset);
+      
+      // Determine how many characters to compare/process in this step
+      const processLength = Math.min(remainingDiffPartText.length, remainingNodeText.length);
+      
+      // console.log(`  Inner loop: nodeOffset=${nodeOffset}, diffPartOffset=${diffPartOffset}, processLength=${processLength}, diffPartType=${currentDiffPart.added ? 'add' : currentDiffPart.removed ? 'rem' : 'com'}`);
+
+      if (currentDiffPart.added) {
+        // This text exists in the document AND corresponds to an added part
+        const startPos = pos + 1 + nodeOffset; // Position within the doc
+        const endPos = startPos + processLength;
+        const style = 'background-color: rgba(0, 255, 0, 0.2);';
+
+        if (startPos < endPos) { // Ensure valid range
+           console.log(`  Adding decoration: diff-added from ${startPos} to ${endPos}`);
+           decorations.push(Decoration.inline(startPos, endPos, { style: style }));
+        }
+
+        // Advance offsets
+        nodeOffset += processLength;
+        diffPartOffset += processLength;
+        accumulatedDocPos += processLength; // Advance doc pos as this text is present
+
+      } else if (currentDiffPart.removed) {
+        // This part does *not* exist in the document node.
+        // We only advance the diff part offset/index.
+        // The document iterator (`nodeOffset`) should NOT advance here for this part.
+        diffPartOffset += remainingDiffPartText.length; // Consume the entire removed part
+        // DO NOT advance nodeOffset
+        // DO NOT advance accumulatedDocPos
+        // console.log(`   Skipping removed part: len=${remainingDiffPartText.length}`);
+        
+      } else { // Common part
+         // This text exists in the document and is common.
+         // Just advance all offsets.
+        // console.log(`   Skipping common part: len=${processLength}`);
+        nodeOffset += processLength;
+        diffPartOffset += processLength;
+        accumulatedDocPos += processLength; // Advance doc pos as this text is present
+      }
+
+      // If we've finished processing the current diff part, move to the next
+      if (diffPartOffset >= currentDiffPart.value.length) {
+        // console.log(`   Finished diff part ${diffPartIndex}`);
+        diffPartIndex++;
+        diffPartOffset = 0;
       }
     }
-
-    if (!part.removed) {
-      currentDocPos += partLength;
-    }
+    
+    // Ensure we don't descend into nodes if we are done with diffs
+    return diffPartIndex < diffResult.length;
   });
 
+  console.log(`calculateDecorations (node-aware): Finished. Found ${decorations.length} decorations. Accumulated Doc Pos: ${accumulatedDocPos}`);
+  // Check if accumulated position matches doc size as a sanity check
+   if (accumulatedDocPos !== doc.content.size + 1) {
+       console.warn(`Final accumulated position (${accumulatedDocPos}) does not match document content size + 1 (${doc.content.size + 1}). Mapping might be inaccurate.`);
+   }
+
   return DecorationSet.create(doc, decorations);
+  */
+ return DecorationSet.empty; // Return empty set while disabled
 }
 
 // Use AnyExtension instead of Extension<Options> if no options are needed

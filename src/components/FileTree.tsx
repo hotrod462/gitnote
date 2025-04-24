@@ -26,6 +26,7 @@ import {
 import CreateItemDialog from './CreateItemDialog';
 import DeleteConfirmationDialog from './DeleteConfirmationDialog';
 import RenameDialog from './RenameDialog';
+import posthog from 'posthog-js';
 
 // Define props interface
 interface FileTreeProps {
@@ -307,118 +308,83 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
     setIsCreateDialogOpen(true);
   };
 
-  // Handler for dialog submission - simplified, receives name from dialog
-  const handleCreateItem = useCallback(async (itemName: string) => {
-    if (!itemName || !createItemType) return;
-    const parentDir = createItemTargetDir;
-    const fullPath = parentDir ? `${parentDir}/${itemName}` : itemName;
-    const newItemTypeMapped = createItemType === 'folder' ? 'dir' : 'file';
+  // Function to handle confirming the creation dialog
+  const handleConfirmCreate = async (itemName: string) => {
+    if (!createItemType || !itemName) return; 
 
-    // --- Optimistic UI --- 
-    const newItem: FileTreeItem = {
-        name: itemName,
-        path: fullPath,
-        type: newItemTypeMapped,
-    };
+    const targetDir = createItemTargetDir;
+    // Ensure trailing slash for directory path construction
+    const prefix = targetDir ? (targetDir.endsWith('/') ? targetDir : targetDir + '/') : '';
+    const fullPath = `${prefix}${itemName}${createItemType === 'file' ? '.md' : ''}`;
 
-    let originalTreeData: FileTreeItem[] | null = null;
-    let originalChildrenCache: Record<string, FileTreeItem[]> | null = null;
-    let targetArray: FileTreeItem[] | undefined;
-
-    // Helper to sort tree items
-    const sortTreeItems = (items: FileTreeItem[]): FileTreeItem[] => {
-        return items.sort((a, b) => {
-            if (a.type === 'dir' && b.type !== 'dir') return -1;
-            if (a.type !== 'dir' && b.type === 'dir') return 1;
-            return a.name.localeCompare(b.name);
-        });
-    };
-
-    if (parentDir === '') {
-        originalTreeData = [...treeData];
-        targetArray = [...treeData, newItem];
-        setTreeData(sortTreeItems(targetArray));
-    } else {
-        originalChildrenCache = {...childrenCache}; // Store original cache state
-        targetArray = [...(childrenCache[parentDir] || []), newItem];
-        setChildrenCache(prev => ({
-            ...prev,
-            [parentDir]: sortTreeItems(targetArray!)
-        }));
-         // Ensure parent folder is expanded to show the new item
-        if (!expandedFolders.has(parentDir)) {
-            setExpandedFolders(prev => new Set(prev).add(parentDir));
-        }
-    }
-    // --- End Optimistic UI --- 
-
-    let result: { success: boolean; error?: string; sha?: string | null };
+    console.log(`Attempting to create ${createItemType}: ${fullPath}`);
+    setIsCreateDialogOpen(false); // Close dialog optimistically or after attempt?
 
     try {
-      if (newItemTypeMapped === 'dir') {
+      let result;
+      if (createItemType === 'folder') {
         result = await createFolder(fullPath);
-      } else {
-        result = await createOrUpdateFile(fullPath, '', `Create ${itemName}`);
+        if (result.success) {
+           posthog.capture('folder_created', { folder_path: fullPath }); // Track folder creation
+        } else {
+           // Add error property for tracking?
+           posthog.capture('folder_create_failed', { folder_path: fullPath, error: result.error });
+        }
+      } else { // 'file'
+        result = await createOrUpdateFile(fullPath, '', `Create ${itemName}.md`);
+        if (result.success) {
+           posthog.capture('note_created', { file_path: fullPath }); // Track note creation
+        } else {
+           posthog.capture('note_create_failed', { file_path: fullPath, error: result.error });
+        }
       }
 
       if (result.success) {
-        toast({
-          title: "Success",
-          description: `${newItemTypeMapped === 'dir' ? 'Folder' : 'File'} "${itemName}" created.`,
-        });
-        // Update SHA if it's a file
-        if (newItemTypeMapped === 'file' && result.sha) {
-            const newSha = result.sha;
-            // Update the item in the state with the correct SHA
-             if (parentDir === '') {
-                setTreeData(prev => prev.map(item => item.path === fullPath ? { ...item, sha: newSha } : item));
-            } else {
-                setChildrenCache(prev => ({
-                    ...prev,
-                    [parentDir]: prev[parentDir]?.map(item => item.path === fullPath ? { ...item, sha: newSha } : item) || []
-                }));
-            }
+        toast({ title: `${createItemType === 'folder' ? 'Folder' : 'Note'} created successfully: ${itemName}` });
+        // Add the new item to the tree optimistically or re-fetch?
+        // Re-fetching the parent directory might be simplest
+        await fetchAndUpdateDirectory(targetDir);
+        // If it was a file, select it
+        if (createItemType === 'file') {
+          onFileSelect({ path: fullPath, isNew: true });
         }
-        // Auto-select the newly created file
-        if (newItemTypeMapped === 'file') {
-            onFileSelect({ path: fullPath, isNew: true }); 
-        }
-        // --- IMPORTANT: Close dialog on success --- 
-        setIsCreateDialogOpen(false); 
       } else {
-        throw new Error(result.error || `Failed to create ${newItemTypeMapped}.`);
+        throw new Error(result.error || `Failed to create ${createItemType}`);
       }
     } catch (err: any) {
-      console.error(`Failed to create ${newItemTypeMapped}:`, err);
-      toast({
-        title: "Error Creating Item",
+      console.error(`Error creating ${createItemType}:`, err);
+      toast({ 
+        title: `Error creating ${createItemType}`, 
         description: err.message,
-        variant: "destructive",
+        variant: 'destructive' 
       });
-      // --- Revert Optimistic UI --- 
-       if (parentDir === '') {
-            if (originalTreeData) setTreeData(originalTreeData);
-        } else {
-            if (originalChildrenCache) {
-                 // Revert specific directory or whole cache?
-                 // Reverting whole cache is simpler if multiple optimistic actions aren't expected concurrently
-                 setChildrenCache(originalChildrenCache);
-                  // Maybe collapse parent again if we auto-expanded it?
-                 // const wasOriginallyExpanded = originalChildrenCache[parentDir] !== undefined;
-                 // if (!wasOriginallyExpanded) { // Check if folder existed before
-                 //    setExpandedFolders(prev => { 
-                 //        const next = new Set(prev);
-                 //        next.delete(parentDir);
-                 //        return next;
-                 //    });
-                 // }
-            }
-        }
-        // Re-open dialog on error? Maybe not, user can click again.
-       // setIsCreateDialogOpen(true); 
-      // --- End Revert --- 
     }
-  }, [createItemType, createItemTargetDir, treeData, childrenCache, toast, onFileSelect, expandedFolders]);
+    // Reset state
+    setCreateItemTargetDir('');
+    setCreateItemType(null);
+  };
+  
+  // Function to fetch and update a directory's content in the cache
+  const fetchAndUpdateDirectory = async (dirPath: string) => {
+       setLoadingFolders((prev) => new Set(prev).add(dirPath));
+        try {
+          const childrenItems = await getFileTree(dirPath);
+          setChildrenCache((prev) => ({ ...prev, [dirPath]: childrenItems }));
+           // If updating root, update treeData directly
+           if (dirPath === '') {
+               setTreeData(childrenItems);
+           }
+        } catch (err: any) {
+          console.error(`Failed to refresh folder content for ${dirPath}:`, err);
+          toast({ title: `Error refreshing folder ${dirPath}`, description: err.message, variant: 'destructive' });
+        } finally {
+          setLoadingFolders((prev) => {
+            const next = new Set(prev);
+            next.delete(dirPath);
+            return next;
+          });
+        }
+  };
 
   // Delete handlers
   const handleRequestDelete = (item: FileTreeItem) => {
@@ -518,7 +484,7 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
       // --- Optimistic UI --- 
       let originalTreeData: FileTreeItem[] | null = null;
       let originalChildrenCache: Record<string, FileTreeItem[]> | null = null;
-      const updateState = (items: FileTreeItem[]) => {
+      const updateState = (items: FileTreeItem[]): FileTreeItem[] => {
           return items.map(i => i.path === oldPath ? { ...i, name: newNameFromDialog, path: newPath } : i)
                       .sort((a, b) => {
                           if (a.type === 'dir' && b.type !== 'dir') return -1;
@@ -648,7 +614,7 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
         onOpenChange={setIsCreateDialogOpen}
         itemType={createItemType}
         targetDirectory={createItemTargetDir}
-        onCreateConfirm={handleCreateItem}
+        onCreateConfirm={handleConfirmCreate}
       />
 
       {/* Render extracted Delete Dialog */} 

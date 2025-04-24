@@ -16,8 +16,8 @@ import FileTree from '@/components/FileTree';
 import Editor, { EditorRef } from '@/components/Editor';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Define possible view modes
-type ViewMode = 'edit' | 'diff';
+// Simplify view modes
+type ViewMode = 'edit' | 'history_view';
 
 interface SelectedFileState {
   path: string | null;
@@ -30,7 +30,7 @@ export default function NotesPage() {
   const [selectedFile, setSelectedFile] = useState<SelectedFileState>({ path: null, isNew: false });
   const [currentFileSha, setCurrentFileSha] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('edit');
-  const [diffCommitSha, setDiffCommitSha] = useState<string | null>(null);
+  const [historicalCommitSha, setHistoricalCommitSha] = useState<string | null>(null);
   const router = useRouter();
   const editorRef = useRef<EditorRef>(null);
 
@@ -61,7 +61,7 @@ export default function NotesPage() {
     console.log('File selected:', { newPath, isNew });
     
     setViewMode('edit');
-    setDiffCommitSha(null);
+    setHistoricalCommitSha(null);
     setSelectedFile({ path: newPath, isNew });
     setCurrentFileSha(null); 
 
@@ -79,22 +79,22 @@ export default function NotesPage() {
     setSelectedFile(prev => ({ ...prev, isNew: false }));
   }, [setCurrentFileSha, setSelectedFile]);
 
-  const handleEnterDiffMode = useCallback((commitSha: string) => {
+  const handleEnterHistoryView = useCallback((commitSha: string) => {
       const filePath = selectedFile.path;
       if (!filePath) return;
-      console.log(`Entering diff mode for file ${filePath}, commit ${commitSha}`);
-      setViewMode('diff');
-      setDiffCommitSha(commitSha);
+      console.log(`Entering history view for file ${filePath}, commit ${commitSha}`);
+      setViewMode('history_view');
+      setHistoricalCommitSha(commitSha);
       queueMicrotask(() => { 
-         editorRef.current?.loadDiffContent(filePath, commitSha);
+         editorRef.current?.loadHistoricalContent(filePath, commitSha);
       });
   }, [selectedFile.path, editorRef]);
 
-  const handleExitDiffMode = useCallback(() => {
+  const handleExitHistoryView = useCallback(() => {
       const filePath = selectedFile.path;
-      console.log('Exiting diff mode');
+      console.log('Exiting history view');
       setViewMode('edit');
-      setDiffCommitSha(null);
+      setHistoricalCommitSha(null);
       if (filePath) {
           queueMicrotask(() => {
              editorRef.current?.loadContent(filePath);
@@ -154,9 +154,9 @@ export default function NotesPage() {
                 onContentLoaded={handleContentLoaded}
                 repoFullName={connection.repoFullName}
                 viewMode={viewMode}
-                diffCommitSha={diffCommitSha}
-                onExitDiffMode={handleExitDiffMode}
-                onEnterDiffModeRequest={handleEnterDiffMode}
+                historicalCommitSha={historicalCommitSha}
+                onExitHistoryView={handleExitHistoryView}
+                onEnterHistoryViewRequest={handleEnterHistoryView}
               />
             </div>
           </ResizablePanel>

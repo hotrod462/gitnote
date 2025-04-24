@@ -419,7 +419,7 @@ export async function saveDraft(
 
 /**
  * Fetches only the latest SHA of a specific file without downloading content.
- * Uses a HEAD request for efficiency.
+ * Uses a GET request to ensure we get the SHA directly from the response body.
  */
 export async function getLatestFileSha(filePath: string): Promise<{ sha: string | null; error?: string }> {
   // noStore(); // Might be okay to cache HEAD requests briefly?
@@ -443,25 +443,30 @@ export async function getLatestFileSha(filePath: string): Promise<{ sha: string 
   const [owner, repo] = repoFullName.split('/');
 
   try {
-    // Use HEAD request to get metadata (including ETag/SHA) without content
-    const { headers } = await octokit.request('HEAD /repos/{owner}/{repo}/contents/{path}', {
+    // Use GET request to ensure we get the SHA directly from the response body
+    const { data } = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner,
       repo,
       path: filePath,
     });
 
-    // Extract SHA from ETag header (ETag is usually "sha")
-    const etag = headers.etag;
-    const sha = etag ? etag.replace(/"/g, '') : null;
-    
-    if (sha) {
-       console.log(`getLatestFileSha successful for "${filePath}", SHA: ${sha}`);
-       return { sha };
+    // Type guard checking for file type and sha property
+    if (typeof data !== 'object' || data === null || Array.isArray(data) || !('sha' in data) || data.type !== 'file') {
+       console.error('Invalid response when fetching latest file SHA for:', filePath, data);
+       return { sha: null, error: 'Could not retrieve file SHA. Unexpected response format.' };
+    }
+
+    // Extract the SHA directly from the response body data
+    const gitSha = data.sha as string | null; 
+
+    if (gitSha) {
+       console.log(`getLatestFileSha successfully fetched SHA ${gitSha} for path: "${filePath}"`);
+       // No cleaning needed if fetched correctly from body
+       return { sha: gitSha }; 
     } else {
-       console.warn(`Could not extract SHA from ETag for "${filePath}". Headers:`, headers);
-       // Fallback to GET if HEAD didn't provide SHA? Or just return error?
-       // For V1, let's return an error if SHA not found in ETag.
-       return { sha: null, error: 'Could not determine file SHA from headers.' };
+       // This case should be unlikely if the type guard passed
+       console.warn(`SHA was null or undefined in response body for "${filePath}". Data:`, data);
+       return { sha: null, error: 'Could not determine file SHA from response body.' };
     }
 
   } catch (error: unknown) {

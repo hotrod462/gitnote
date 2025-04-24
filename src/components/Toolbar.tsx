@@ -52,8 +52,8 @@ export default function Toolbar({ editor, onRequestSave, selectedFilePath, onSel
             <Save className="h-4 w-4 mr-2" />
             Save Draft
         </Button>
-        {/* Render History Popover only if a file path is selected */}
-        {selectedFilePath && (
+        {/* Render History Popover only if a file path and onSelectCommit are available */}
+        {selectedFilePath && onSelectCommit && (
           <HistoryPopover 
             filePath={selectedFilePath} 
             onSelectCommit={onSelectCommit}

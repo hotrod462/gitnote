@@ -131,6 +131,7 @@ const Editor = forwardRef<EditorRef, EditorProps>((
        const data = await getFileContent(filePath);
        console.log("<<< RAW CONTENT FROM getFileContent >>>:", data);
        if (data) {
+         console.log("<<< CONTENT STRING BEFORE setContent >>>:", JSON.stringify(data.content));
          // Use emitUpdate: false to prevent triggering onUpdate during load
          editor.commands.setContent(data.content, false); // Load content (should be Markdown from GH)
          onContentLoaded(data.sha);

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { checkUserConnectionStatus, ConnectionStatus } from '@/lib/actions/githubConnections';
 import ConnectRepoPrompt from '@/components/ConnectRepoPrompt';
 import SelectRepoPrompt from '@/components/SelectRepoPrompt';
+import { ThemeToggleButton } from '@/components/theme-toggle-button';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -137,9 +138,12 @@ export default function NotesPage() {
       <div className="flex flex-col h-screen">
         <header className="flex justify-between items-center p-4 border-b">
           <h1 className="text-xl font-bold">GitNote - {connection.repoFullName}</h1>
-          <form action={handleSignOut}>
-            <Button type="submit" variant="outline">Sign Out</Button>
-          </form>
+          <div className="flex items-center gap-2">
+            <ThemeToggleButton />
+            <form action={handleSignOut}>
+              <Button type="submit" variant="outline">Sign Out</Button>
+            </form>
+          </div>
         </header>
         <ResizablePanelGroup direction="horizontal" className="flex-grow">
           <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>

@@ -67,7 +67,7 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   const isExpanded = expandedFolders.has(item.path);
   const isLoading = loadingFolders.has(item.path);
   const children = childrenCache[item.path];
-  const indentStyle = { paddingLeft: `${level * 1.25}rem` }; // Indentation based on level
+  const indentStyle = { paddingLeft: `${level * 1.25}rem` };
 
   const handleItemClick = () => {
     if (item.type === 'dir') {
@@ -79,74 +79,82 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
 
   return (
     <li key={item.path} className="group relative">
-      <button
-        onClick={handleItemClick}
-        className={`flex items-center space-x-1 p-1 rounded w-full text-left text-sm hover:bg-accent ${selectedFilePath === item.path ? 'bg-accent font-medium' : ''}`}
-        style={indentStyle}
-      >
-        {item.type === 'dir' ? (
-          <>
-            {isLoading ? (
-              <Loader2 size={16} className="animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-between w-full rounded hover:bg-accent pr-1">
+        <button
+          onClick={handleItemClick}
+          className={`flex flex-grow items-center space-x-1 p-1 text-left text-sm ${selectedFilePath === item.path ? 'bg-accent font-medium rounded' : ''}`}
+        >
+          <span style={indentStyle} className="flex items-center space-x-1 flex-grow min-w-0">
+            {item.type === 'dir' ? (
+              <>
+                {isLoading ? (
+                  <Loader2 size={16} className="animate-spin text-muted-foreground" />
+                ) : (
+                  isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />
+                )}
+                {isExpanded ? <FolderOpen size={16} className="text-sky-600" /> : <Folder size={16} className="text-sky-600" />}
+              </>
             ) : (
-              isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />
+              <>
+                <span className="inline-block w-[16px]"></span>
+                <File size={16} className="text-muted-foreground" />
+              </>
             )}
-            {isExpanded ? <FolderOpen size={16} className="text-sky-600" /> : <Folder size={16} className="text-sky-600" />}
-          </>
-        ) : (
-          <File size={16} className="ml-[16px] text-muted-foreground" /> // Add margin to align with folder icons
-        )}
-        <span className="flex-grow truncate">{item.name}</span>
-      </button>
+            <span className="truncate flex-shrink min-w-0">{item.name}</span>
+          </span>
+        </button>
 
-      <DropdownMenu>
-          <DropdownMenuTrigger asChild className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-             <Button variant="ghost" size="icon" className="h-6 w-6">
-                  <MoreHorizontal className="h-4 w-4" />
-                  <span className="sr-only">Item options</span>
-              </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex-shrink-0">
+            <Button variant="ghost" size="icon" className="h-6 w-6">
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="sr-only">Item options</span>
+            </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-             {item.type === 'file' && item.sha && (
-                  <DropdownMenuItem 
-                      className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                      onClick={() => onRequestDelete(item)}
-                  >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete File
-                  </DropdownMenuItem>
-              )}
+          <DropdownMenuContent align="end">
+            {item.type === 'file' && item.sha && (
+              <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => onRequestDelete(item)}>
+                <Trash2 className="mr-2 h-4 w-4" /> Delete File
+              </DropdownMenuItem>
+            )}
+            {item.type === 'dir' && (
+              <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onClick={() => onRequestDelete(item)}>
+                <Trash2 className="mr-2 h-4 w-4" /> Delete Folder
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
-      </DropdownMenu>
+        </DropdownMenu>
+      </div>
 
-      {isExpanded && children && (
-        <ul className="space-y-1 mt-1">
-          {children.length === 0 && (
-            <li className="text-muted-foreground text-xs" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
-              Folder is empty
-            </li>
-          )}
-          {children.map((child) => (
-            <RenderTreeItem
-              key={child.path}
-              item={child}
-              level={level + 1}
-              selectedFilePath={selectedFilePath}
-              expandedFolders={expandedFolders}
-              loadingFolders={loadingFolders}
-              childrenCache={childrenCache}
-              onFolderToggle={onFolderToggle}
-              onFileClick={onFileClick}
-              onRequestDelete={onRequestDelete}
-            />
-          ))}
-        </ul>
+      {/* --- RESTORE children/loading rendering --- */}
+       {isExpanded && children && (
+          <ul className="space-y-1 mt-1">
+              {children.length === 0 && (
+                  <li className="text-muted-foreground text-xs" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
+                      Folder is empty
+                  </li>
+              )}
+              {children.map((child) => (
+                  <RenderTreeItem
+                      key={child.path}
+                      item={child}
+                      level={level + 1}
+                      selectedFilePath={selectedFilePath}
+                      expandedFolders={expandedFolders}
+                      loadingFolders={loadingFolders}
+                      childrenCache={childrenCache}
+                      onFolderToggle={onFolderToggle}
+                      onFileClick={onFileClick}
+                      onRequestDelete={onRequestDelete}
+                  />
+              ))}
+          </ul>
       )}
       {isExpanded && isLoading && (
-         <div className="space-y-1 pl-4 mt-1" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
-           <Skeleton className="h-4 w-10/12" />
-           <Skeleton className="h-4 w-8/12" />
-         </div>
+          <div className="space-y-1 pl-4 mt-1" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
+              <Skeleton className="h-4 w-10/12" />
+              <Skeleton className="h-4 w-8/12" />
+          </div>
       )}
     </li>
   );
@@ -181,6 +189,7 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<FileTreeItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null); // Specific error for dialog
 
   // Fetch initial root tree data
   useEffect(() => {
@@ -305,15 +314,56 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
     if (!newItemName || !createItemType) return;
     setIsCreating(true);
     const trimmedName = newItemName.trim();
-    const fullPath = createItemTargetDir ? `${createItemTargetDir}/${trimmedName}` : trimmedName;
+    const parentDir = createItemTargetDir;
+    const fullPath = parentDir ? `${parentDir}/${trimmedName}` : trimmedName;
 
-    let result: { success: boolean; error?: string };
+    // --- Optimistic UI --- 
+    const newItem: FileTreeItem = {
+        name: trimmedName,
+        path: fullPath,
+        type: createItemType === 'folder' ? 'dir' : 'file', // Map 'folder' to 'dir'
+        // SHA will be undefined initially for both files and folders
+    };
+
+    let originalTreeData: FileTreeItem[] | null = null;
+    let originalChildrenCache: Record<string, FileTreeItem[]> | null = null;
+    let targetArray: FileTreeItem[] | undefined;
+
+    // Helper to sort tree items
+    const sortTreeItems = (items: FileTreeItem[]): FileTreeItem[] => {
+        return items.sort((a, b) => {
+            if (a.type === 'dir' && b.type !== 'dir') return -1;
+            if (a.type !== 'dir' && b.type === 'dir') return 1;
+            return a.name.localeCompare(b.name);
+        });
+    };
+
+    if (parentDir === '') {
+        originalTreeData = [...treeData];
+        targetArray = [...treeData, newItem];
+        setTreeData(sortTreeItems(targetArray));
+    } else {
+        originalChildrenCache = {...childrenCache}; // Store original cache state
+        targetArray = [...(childrenCache[parentDir] || []), newItem];
+        setChildrenCache(prev => ({
+            ...prev,
+            [parentDir]: sortTreeItems(targetArray!)
+        }));
+         // Ensure parent folder is expanded to show the new item
+        if (!expandedFolders.has(parentDir)) {
+            setExpandedFolders(prev => new Set(prev).add(parentDir));
+        }
+    }
+    // Close dialog immediately for optimistic feel
+    setIsCreateDialogOpen(false); 
+    // --- End Optimistic UI --- 
+
+    let result: { success: boolean; error?: string; sha?: string | null };
 
     try {
       if (createItemType === 'folder') {
         result = await createFolder(fullPath);
       } else {
-        // Creating an empty file initially
         result = await createOrUpdateFile(fullPath, '', `Create ${trimmedName}`);
       }
 
@@ -322,9 +372,20 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
           title: "Success",
           description: `${createItemType === 'folder' ? 'Folder' : 'File'} "${trimmedName}" created.`,
         });
-        setIsCreateDialogOpen(false);
-        // Refresh the parent directory to show the new item
-        await refreshDirectory(createItemTargetDir);
+        // Update SHA if it's a file and SHA was returned
+        if (createItemType === 'file' && result.sha) {
+            const newSha = result.sha;
+            // Update the item in the state with the correct SHA
+             if (parentDir === '') {
+                setTreeData(prev => prev.map(item => item.path === fullPath ? { ...item, sha: newSha } : item));
+            } else {
+                setChildrenCache(prev => ({
+                    ...prev,
+                    [parentDir]: prev[parentDir]?.map(item => item.path === fullPath ? { ...item, sha: newSha } : item) || []
+                }));
+            }
+        }
+        // No need to refresh directory, already added optimistically
       } else {
         throw new Error(result.error || `Failed to create ${createItemType}.`);
       }
@@ -335,26 +396,54 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
         description: err.message,
         variant: "destructive",
       });
+      // --- Revert Optimistic UI --- 
+       if (parentDir === '') {
+            if (originalTreeData) setTreeData(originalTreeData);
+        } else {
+            if (originalChildrenCache) {
+                 // Revert specific directory or whole cache?
+                 // Reverting whole cache is simpler if multiple optimistic actions aren't expected concurrently
+                 setChildrenCache(originalChildrenCache);
+                  // Maybe collapse parent again if we auto-expanded it?
+                 // const wasOriginallyExpanded = originalChildrenCache[parentDir] !== undefined;
+                 // if (!wasOriginallyExpanded) { // Check if folder existed before
+                 //    setExpandedFolders(prev => { 
+                 //        const next = new Set(prev);
+                 //        next.delete(parentDir);
+                 //        return next;
+                 //    });
+                 // }
+            }
+        }
+        // Re-open dialog on error? Maybe not, user can click again.
+       // setIsCreateDialogOpen(true); 
+      // --- End Revert --- 
     } finally {
        setIsCreating(false);
+       // Reset dialog inputs? Only if dialog is kept open on error.
+       // setNewItemName(''); 
     }
   };
 
   // Delete handlers
   const handleRequestDelete = (item: FileTreeItem) => {
-      // Can only delete files with SHA for now
-      if (item.type !== 'file' || !item.sha) return;
+      // No longer restricted to files
+      // if (item.type !== 'file' || !item.sha) return; 
       setItemToDelete(item);
+      setDeleteError(null); // Clear previous errors
       setIsDeleting(false);
       setIsDeleteDialogOpen(true);
   };
 
   const handleConfirmDelete = async () => {
-      if (!itemToDelete || !itemToDelete.sha) return;
+      if (!itemToDelete) return;
       setIsDeleting(true);
+      setDeleteError(null);
       
       const itemPath = itemToDelete.path;
-      const itemSha = itemToDelete.sha;
+      const itemType = itemToDelete.type;
+      const itemName = itemToDelete.name;
+      const itemSha = itemToDelete.sha; // Note: Will be undefined for folders initially
       const parentDir = getParentDirectory(itemPath);
 
       // Flag to track success for finally block
@@ -365,10 +454,10 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
       let originalChildrenCache: Record<string, FileTreeItem[]> | null = null;
 
       if (parentDir === '') {
-          originalTreeData = [...treeData]; // Shallow copy
+          originalTreeData = [...treeData];
           setTreeData((prev) => prev.filter(i => i.path !== itemPath));
       } else {
-          originalChildrenCache = {...childrenCache}; // Shallow copy
+          originalChildrenCache = {...childrenCache};
           setChildrenCache((prev) => ({
               ...prev,
               [parentDir]: prev[parentDir]?.filter(i => i.path !== itemPath) || []
@@ -377,25 +466,72 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
       // --- End Optimistic UI --- 
 
       try {
-          const result = await deleteFile(itemPath, itemSha); // Call server action
+          let result: { success: boolean; error?: string };
 
+          if (itemType === 'file') {
+              if (!itemSha) {
+                  throw new Error('File SHA is missing, cannot delete.');
+              }
+              result = await deleteFile(itemPath, itemSha);
+          } else { // itemType === 'dir'
+              // --- Folder Deletion Logic --- 
+              let children = childrenCache[itemPath];
+              // Fetch children if not cached
+              if (children === undefined) {
+                  console.log(`Fetching children for folder ${itemPath} before delete check...`);
+                  // Indicate loading specifically for this check? Maybe not necessary.
+                  try {
+                      children = await getFileTree(itemPath);
+                      // Cache the result even if deletion fails/aborted
+                      setChildrenCache((prev) => ({ ...prev, [itemPath]: children || [] }));
+                  } catch (fetchErr: any) { 
+                      throw new Error(`Could not check folder contents: ${fetchErr.message}`);
+                  }
+              }
+
+              // Check if folder is empty or only contains .gitkeep
+              const gitkeepItem = children?.find(c => c.name === '.gitkeep');
+              const isEmpty = children?.length === 0 || (children?.length === 1 && gitkeepItem);
+
+              if (!isEmpty) {
+                   throw new Error('Cannot delete non-empty folder.');
+              }
+
+              // If empty and .gitkeep exists, delete it
+              if (gitkeepItem && gitkeepItem.sha) {
+                  console.log(`Attempting to delete .gitkeep in ${itemPath}`);
+                  result = await deleteFile(gitkeepItem.path, gitkeepItem.sha, `Delete folder ${itemName}`);
+                  if (!result.success) {
+                      // If deleting .gitkeep fails, the folder delete fails
+                      throw new Error(result.error || 'Failed to delete .gitkeep file.');
+                  }
+              } else {
+                  // Folder is truly empty (or .gitkeep check failed but we proceed)
+                  console.log(`Folder ${itemPath} is empty, considering delete successful.`);
+                  result = { success: true }; // No actual file to delete
+              }
+               // --- End Folder Deletion Logic --- 
+          }
+
+          // Handle result
           if (result.success) {
               toast({
                   title: "Success",
-                  description: `File "${itemToDelete.name}" deleted.`,
+                  description: `${itemType === 'dir' ? 'Folder' : 'File'} "${itemName}" deleted.`,
               });
-              deleteSucceeded = true; // Set flag on success
-              // Optional: If the deleted file was selected, unselect it
+              deleteSucceeded = true;
+              // Optional: If the deleted item was selected, unselect it
               if (selectedFilePath === itemPath) {
-                  onFileSelect(''); // Or null, depending on how NotesPage handles it
+                  onFileSelect('');
               }
           } else {
-              throw new Error(result.error || 'Failed to delete file.');
+              throw new Error(result.error || `Failed to delete ${itemType}.`);
           }
       } catch (err: any) {
-          console.error(`Failed to delete file ${itemPath}:`, err);
+          console.error(`Failed to delete ${itemType} ${itemPath}:`, err);
+          setDeleteError(err.message); // Set specific error for dialog
           toast({
-              title: "Error Deleting File",
+              title: `Error Deleting ${itemType === 'dir' ? 'Folder' : 'File'}`,
               description: err.message,
               variant: "destructive",
           });
@@ -406,14 +542,13 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
               if (originalChildrenCache) setChildrenCache(originalChildrenCache);
           }
           // --- End Revert --- 
-          // deleteSucceeded remains false
       } finally {
           setIsDeleting(false);
-          setIsDeleteDialogOpen(false); // Always close the dialog
-          if (deleteSucceeded) {
-              setItemToDelete(null); // Clear item only on success
+          // Keep dialog open on error to show message
+          if (deleteSucceeded) { 
+               setIsDeleteDialogOpen(false); 
+               setItemToDelete(null); // Clear item only on success
           }
-          // If keeping item on error, ensure it's cleared eventually or dialog handles it
       }
   };
 
@@ -511,20 +646,36 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the file 
+              {/* Display error message if one occurred */}
+              {deleteError && (
+                  <p className="text-destructive text-sm mb-2">Error: {deleteError}</p>
+              )}
+              This action cannot be undone. This will permanently delete the {itemToDelete?.type === 'dir' ? 'folder' : 'file'} 
               <span className="font-medium">{itemToDelete?.name}</span> from your repository.
+              {itemToDelete?.type === 'dir' && (
+                  <span className="text-xs block mt-1"> (Only empty folders can be deleted)</span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleConfirmDelete} 
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            {/* Change Cancel to Close if there was an error */}
+            <AlertDialogCancel 
+                onClick={() => { setDeleteError(null); setItemToDelete(null); }}
+                disabled={isDeleting}
             >
-              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Delete
-            </AlertDialogAction>
+                {deleteError ? 'Close' : 'Cancel'}
+            </AlertDialogCancel>
+            {/* Hide Delete button if there was an error */}
+            {!deleteError && (
+                 <AlertDialogAction 
+                  onClick={handleConfirmDelete} 
+                  disabled={isDeleting}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Delete
+                </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

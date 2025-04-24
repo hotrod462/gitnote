@@ -214,40 +214,41 @@ This document outlines the step-by-step process to build GitNote V1 based on the
         *   On success, update TipTap content using `editor.commands.setContent(content)` and store the received SHA in component state.
         *   Set loading state to false. Handle errors with Toasts.
     *   Result: Editor loads and displays content when a file is selected in the tree.
-    *   Verification:
-        *   Ensure your selected test repository has at least one Markdown file.
-        *   Sign in. Navigate to `/notes`. Select the Markdown file.
-        *   Verify loading indicator and then content appears in TipTap.
-        *   Select a different file. Verify its content loads.
-        *   Run `npm run lint`. Check `Editor` component logic.
+    *   Verification: Ensure your selected test repository has at least one Markdown file. Sign in. Navigate to `/notes`. Select the Markdown file. Verify loading indicator and then content appears in TipTap. Select a different file. Verify its content loads. Run `npm run lint`. Check `Editor` component logic.
 
 14. **Implement Local Autosave (IndexedDB):**
     *   Action: In the `Editor` component, add an `onUpdate` handler to the `useEditor` configuration.
     *   Logic: Inside `onUpdate`:
         *   Debounce the execution.
         *   Inside the debounced function, use `idb-keyval`'s `set(currentFilePath, editor.getHTML())` (or `.getText()`) to save content.
-    *   Action: Modify content loading logic (Step 13) to check `idb-keyval` before GitHub fetch (optional complexity). Prioritize GitHub load but ensure autosave runs.
-    *   Result: Frequent local backups of user edits.
-    *   Verification:
-        *   Sign in, load file, make edits. Wait past debounce.
-        *   Check IndexedDB in browser dev tools for the key/value.
-        *   Refresh page, verify GitHub version loads (unless IndexedDB load implemented).
-        *   Run `npm run lint`. Check autosave logic.
-
-## Phase 4: File Operations & Saving
+    *   Action: Modify content loading logic (Step 13) to check `idb-keyval` *after* a failed GitHub fetch (useful for offline), or *before* GitHub fetch (optional optimization, increases complexity).
+    *   **Refinement (Handling New Files):** Modify the `Editor`'s loading logic (Step 13) further. If the `selectedFilePath` prop comes with an `isNew: true` flag (passed from `FileTree` after optimistic creation in Step 15):
+        *   **Skip** the initial `getFileContent` server action call.
+        *   Set editor content to empty (`editor.commands.clearContent()`).
+        *   Enable editing (`editor.setEditable(true)`).
+        *   **Initialize IndexedDB entry:** Immediately call `idb-keyval.set(newFilePath, '')` to create the local record for autosave.
+    *   Result: Frequent local backups of user edits. Seamless immediate editing for newly created files without initial server errors.
+    *   Verification: Sign in, load file, make edits. Wait past debounce. Check IndexedDB in browser dev tools for the key/value. Refresh page, verify GitHub version loads (unless IndexedDB load implemented). **Test New File:** Create a new file, verify editor opens immediately with no error, type content, check IndexedDB. Run `npm run lint`. Check autosave logic and new file handling.
 
 15. **Implement File Tree CRUD Actions (Optimistic UI):**
     *   Action: Add UI triggers in `FileTree` (e.g., "+" buttons, right-click context menu using `shadcn/ui DropdownMenu`).
     *   **Create File:**
         *   UI: Use `shadcn/ui Dialog` + `Input`.
-        *   Optimistic UI: Add file to tree state (pending).
+        *   Optimistic UI: Add file to tree state (pending/final state).
         *   Server Action: `createOrUpdateFile(filePath, '', 'Create file [name]')`. Uses `getUserOctokit`.
-        *   Callback: Update tree state (remove pending) or show error Toast and revert.
-    *   **Create Folder:** Similar, Server Action creates `filePath + '/.gitkeep'`.
+        *   Callback: Update tree state (e.g., add SHA) or show error Toast and revert optimistic UI.
+        *   **Editor Interaction:** Pass `isNew: true` flag to parent when selecting the optimistically created file (See Step 14 refinement).
+    *   **Create Folder:** Similar, Server Action creates `filePath + '/.gitkeep'`. Optimistic UI adds folder to tree.
     *   **Delete File:**
-        *   UI: `shadcn/ui AlertDialog`.
+        *   UI: `shadcn/ui AlertDialog` + Context Menu.
         *   Optimistic UI: Remove file from tree.
         *   Server Action: `deleteFileFromRepo(filePath, fileSha)`. Requires SHA. Uses `getUserOctokit`.
+        *   Callback: Show Toast, revert UI on error.
+    *   **Delete Folder:** (See details below - V1 might be limited)
+        *   UI: Add to Context Menu.
+        *   Logic: Check if folder is empty (requires fetching children if not cached). If empty, call server action to delete `.gitkeep` file (if exists) or handle via Git Data API if needed. If not empty, disable delete or show error.
+        *   Optimistic UI: Remove folder from tree.
+        *   Server Action: `deleteFile` targeting `.gitkeep` or more complex action.
         *   Callback: Show Toast, revert UI on error.
     *   **Rename File:** (V1: Delete+Create)
         *   UI: Dialog.
@@ -255,7 +256,9 @@ This document outlines the step-by-step process to build GitNote V1 based on the
         *   Server Action: `renameFile(oldPath, newPath, sha)`. Internally uses `getUserOctokit` to get content, delete old, create new. Needs careful error handling.
         *   Callback: Update UI based on success/failure.
     *   Result: File management integrated with optimistic updates.
-    *   Verification: Test Create, Create Folder, Delete, Rename. Check optimistic UI works. Check GitHub repo reflects changes. Test error handling (e.g., create existing file). Run `npm run lint`.
+    *   Verification: Test Create, Create Folder, Delete (File), Rename. Check optimistic UI works. Check GitHub repo reflects changes. Test error handling (e.g., create existing file). Run `npm run lint`.
+
+## Phase 4: File Operations & Saving
 
 16. **Implement "Save Draft" (Commit):**
     *   Action: Add "Save Draft" `shadcn/ui Button` in `Editor` toolbar.

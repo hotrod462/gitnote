@@ -13,6 +13,17 @@ export interface FileTreeItem {
   sha?: string; // SHA is needed for file operations later
 }
 
+// Define structure for commit history items
+export interface CommitInfo {
+  sha: string;
+  message: string;
+  author?: {
+    name?: string;
+    date?: string;
+  };
+  html_url: string;
+}
+
 /**
  * Placeholder for actions interacting with the GitHub repository 
  * using the user's installation token.
@@ -457,6 +468,70 @@ export async function getLatestFileSha(filePath: string): Promise<{ sha: string 
     } else {
       console.error(`Generic error in getLatestFileSha for "${filePath}":`, error);
       return { sha: null, error: `An unexpected error occurred: ${(error as Error).message}` };
+    }
+  }
+}
+
+/**
+ * Fetches the commit history for a specific file.
+ */
+export async function getCommitsForFile(filePath: string): Promise<{ commits: CommitInfo[]; error?: string }> {
+  noStore();
+  console.log(`getCommitsForFile called for path: "${filePath}"`);
+
+  let octokit;
+  let repoFullName: string;
+
+  try {
+    octokit = await getUserOctokit();
+    const connection = await checkUserConnectionStatus();
+    if (connection.status !== 'CONNECTED') {
+      return { commits: [], error: 'User is not fully connected.' };
+    }
+    repoFullName = connection.repoFullName;
+  } catch (authError: any) {
+    console.error("Auth/connection error in getCommitsForFile:", authError);
+    return { commits: [], error: `Authentication failed: ${authError.message}` };
+  }
+
+  const [owner, repo] = repoFullName.split('/');
+
+  try {
+    const { data } = await octokit.request('GET /repos/{owner}/{repo}/commits', {
+      owner,
+      repo,
+      path: filePath,
+      per_page: 50, // Limit number of commits fetched for performance
+    });
+
+    // Format the commit data
+    const commits: CommitInfo[] = data.map((commit: any) => ({
+      sha: commit.sha,
+      message: commit.commit.message,
+      author: {
+         name: commit.commit.author?.name,
+         date: commit.commit.author?.date,
+      },
+      html_url: commit.html_url,
+    }));
+
+    console.log(`getCommitsForFile successful for "${filePath}", fetched ${commits.length} commits.`);
+    return { commits };
+
+  } catch (error: unknown) {
+     if (error instanceof RequestError) {
+      console.error(`Octokit RequestError in getCommitsForFile for "${filePath}" (Status: ${error.status}):`, error.message);
+      // Handle common errors like 404 (file path not found in history?)
+      if (error.status === 404) {
+        // Check if it's because the file itself doesn't exist or has no history
+        // For now, return empty array
+        console.warn(`Commit history not found for "${filePath}". File might be new or path incorrect.`);
+        return { commits: [], error: 'Commit history not found for this file.' };
+      }
+      return { commits: [], error: `GitHub API error (${error.status}): ${error.message}` };
+    } else {
+      console.error(`Generic error in getCommitsForFile for "${filePath}":`, error);
+      return { commits: [], error: `An unexpected error occurred: ${(error as Error).message}` };
     }
   }
 } 

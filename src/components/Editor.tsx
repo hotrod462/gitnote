@@ -324,9 +324,13 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
         </Alert>
       )}
 
-      {/* Pass onRequestSave to Toolbar */} 
+      {/* Pass onRequestSave and selectedFilePath to Toolbar */} 
       {editor && editor.isEditable && repoFullName && !externalChangeDetected && (
-        <Toolbar editor={editor} onRequestSave={handleRequestSave} />
+        <Toolbar 
+          editor={editor} 
+          onRequestSave={handleRequestSave} 
+          selectedFilePath={selectedFilePath}
+        />
       )}
       {/* Render the appropriate content area */} 
       {contentArea}

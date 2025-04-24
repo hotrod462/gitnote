@@ -5,13 +5,15 @@ import { type Editor } from '@tiptap/react';
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
 import { Bold, Italic, Save } from 'lucide-react';
+import HistoryPopover from './HistoryPopover';
 
 interface ToolbarProps {
   editor: Editor | null;
   onRequestSave: () => void;
+  selectedFilePath: string | null;
 }
 
-export default function Toolbar({ editor, onRequestSave }: ToolbarProps) {
+export default function Toolbar({ editor, onRequestSave, selectedFilePath }: ToolbarProps) {
   if (!editor) {
     return null; // Or return a disabled toolbar state
   }
@@ -37,15 +39,22 @@ export default function Toolbar({ editor, onRequestSave }: ToolbarProps) {
         </Toggle>
       </div>
 
-      <div>
+      {/* Right-aligned action buttons */}
+      <div className="flex space-x-1 items-center">
         <Button 
           size="sm" 
           variant="outline" 
           onClick={onRequestSave}
+          // Disable save button if no file selected (redundant with toolbar check, but safe)
+          disabled={!selectedFilePath} 
         >
             <Save className="h-4 w-4 mr-2" />
             Save Draft
         </Button>
+        {/* Render History Popover only if a file path is selected */}
+        {selectedFilePath && (
+          <HistoryPopover filePath={selectedFilePath} />
+        )}
       </div>
     </div>
   );

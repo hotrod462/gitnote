@@ -82,13 +82,12 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
     };
   }, [selectedFilePath]); // Recreate when file path changes
 
-  // Effect to load content when selectedFilePath changes
+  // Effect to load content OR handle new file
   useEffect(() => {
-    // Ensure editor instance exists before proceeding
     if (!editor) return;
 
+    // Clear editor and stop if no file is selected
     if (!selectedFilePath) {
-      // Check editor before calling methods
       editor?.commands.clearContent();
       editor?.setEditable(false);
       setIsLoading(false);
@@ -96,45 +95,50 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
       return;
     }
 
-    // TODO: Add logic here to check isNewFile flag
+    // --- Handle New File Case --- 
+    if (isNewFile) {
+        console.log(`Handling new file creation for: ${selectedFilePath}`);
+        setIsLoading(false);
+        setError(null);
+        editor?.commands.clearContent();
+        editor?.setEditable(true);
+        // Initialize IndexedDB entry
+        idbSet(selectedFilePath, '')
+            .then(() => console.log(`Initialized IndexedDB for new file: ${selectedFilePath}`))
+            .catch((err) => console.error(`Failed to initialize IndexedDB for ${selectedFilePath}:`, err));
+        return; // Skip fetching from GitHub
+    }
+    // --- End New File Case --- 
 
-    // Load content for the selected file
+    // --- Existing File Loading Logic --- 
     async function loadContent() {
-      // Check editor instance again within async function scope
       if (!editor) return;
-
       setIsLoading(true);
       setError(null);
-      editor.setEditable(false); // Disable editing while loading
+      editor.setEditable(false);
       try {
+        console.log(`Loading existing file content for: ${selectedFilePath}`);
         const data = await getFileContent(selectedFilePath!);
         if (data) {
-          // Check editor before calling methods
-          editor?.commands.setContent(data.content);
-          onContentLoaded(data.sha); // Notify parent of the loaded SHA
-          editor?.setEditable(true); // Enable editing after load
+          editor.commands.setContent(data.content);
+          onContentLoaded(data.sha);
+          editor.setEditable(true);
         } else {
-          // Handle case where file wasn't found (returned null)
-          setError(`File not found: ${selectedFilePath}`);
-          // Check editor before calling methods
-          editor?.commands.clearContent();
+          setError(`File not found on GitHub: ${selectedFilePath}`);
+          editor.commands.clearContent();
         }
       } catch (err: any) {
-        console.error("Failed to load file content:", err);
+        console.error("Failed to load file content from GitHub:", err);
         setError(err.message || "Could not load file content.");
-        // Check editor before calling methods
-        editor?.commands.clearContent();
+        editor.commands.clearContent();
       } finally {
         setIsLoading(false);
       }
     }
 
     loadContent();
-    
-    // Cleanup? Editor instance might handle this internally on destroy
-    // return () => { editor?.destroy(); }; // Might be too aggressive
 
-  }, [selectedFilePath, editor, onContentLoaded, isNewFile]); // Add isNewFile dependency
+  }, [selectedFilePath, editor, onContentLoaded, isNewFile]);
 
   // Render logic based on state
   let contentArea: React.ReactNode;

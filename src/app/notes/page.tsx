@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut } from '@/lib/actions/auth';
 import { Button } from '@/components/ui/button';
@@ -16,10 +16,15 @@ import FileTree from '@/components/FileTree';
 import Editor from '@/components/Editor';
 import { Skeleton } from '@/components/ui/skeleton';
 
+interface SelectedFileState {
+  path: string | null;
+  isNew: boolean;
+}
+
 export default function NotesPage() {
   const [connection, setConnection] = useState<ConnectionStatus | null>(null);
   const [isLoadingConnection, setIsLoadingConnection] = useState(true);
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<SelectedFileState>({ path: null, isNew: false });
   const [currentFileSha, setCurrentFileSha] = useState<string | null>(null);
   const router = useRouter();
 
@@ -44,14 +49,18 @@ export default function NotesPage() {
     router.push('/login');
   };
 
-  const handleFileSelect = (filePath: string) => {
-    setSelectedFilePath(filePath);
-    setCurrentFileSha(null);
-  };
+  const handleFileSelect = useCallback((selection: { path: string; isNew?: boolean }) => {
+    setSelectedFile({
+        path: selection.path || null,
+        isNew: selection.isNew || false
+    });
+    setCurrentFileSha(null); 
+  }, [setSelectedFile, setCurrentFileSha]);
 
-  const handleContentLoaded = (sha: string) => {
+  const handleContentLoaded = useCallback((sha: string) => {
     setCurrentFileSha(sha);
-  };
+    setSelectedFile(prev => ({ ...prev, isNew: false }));
+  }, [setCurrentFileSha, setSelectedFile]);
 
   if (isLoadingConnection) {
     return (
@@ -89,7 +98,7 @@ export default function NotesPage() {
           <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
             <div className="h-full overflow-auto p-2">
               <FileTree
-                selectedFilePath={selectedFilePath}
+                selectedFilePath={selectedFile?.path}
                 onFileSelect={handleFileSelect}
               />
             </div>
@@ -98,7 +107,8 @@ export default function NotesPage() {
           <ResizablePanel defaultSize={75}>
             <div className="h-full">
               <Editor
-                selectedFilePath={selectedFilePath}
+                selectedFilePath={selectedFile?.path}
+                isNewFile={selectedFile?.isNew}
                 currentFileSha={currentFileSha}
                 onContentLoaded={handleContentLoaded}
               />

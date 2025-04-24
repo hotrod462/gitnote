@@ -8,8 +8,6 @@
   }
 }
 
-
-
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -66,8 +64,6 @@
   }
 }
 
-
-
 @layer base {
   * {
     @apply border-border;
@@ -75,4 +71,13 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Diff Highlighting Styles */
+.diff-added {
+  background-color: rgba(0, 255, 0, 0.2); 
+}
+.diff-removed {
+  background-color: rgba(255, 0, 0, 0.2);
+  text-decoration: line-through;
 }

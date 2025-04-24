@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut } from '@/lib/actions/auth';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import FileTree from '@/components/FileTree';
-import Editor from '@/components/Editor';
+import Editor, { EditorRef } from '@/components/Editor';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Define possible view modes
@@ -32,6 +32,7 @@ export default function NotesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('edit');
   const [diffCommitSha, setDiffCommitSha] = useState<string | null>(null);
   const router = useRouter();
+  const editorRef = useRef<EditorRef>(null);
 
   useEffect(() => {
     async function fetchConnectionStatus() {
@@ -55,33 +56,51 @@ export default function NotesPage() {
   };
 
   const handleFileSelect = useCallback((selection: { path: string; isNew?: boolean }) => {
-    setSelectedFile({
-        path: selection.path || null,
-        isNew: selection.isNew || false
-    });
+    const newPath = selection.path || null;
+    const isNew = selection.isNew || false;
+    console.log('File selected:', { newPath, isNew });
+    
+    setViewMode('edit');
+    setDiffCommitSha(null);
+    setSelectedFile({ path: newPath, isNew });
     setCurrentFileSha(null); 
-  }, [setSelectedFile, setCurrentFileSha]);
+
+    if (newPath) {
+        if (isNew) {
+            editorRef.current?.handleNewFile(newPath);
+        } else {
+            editorRef.current?.loadContent(newPath);
+        }
+    }
+  }, [editorRef]);
 
   const handleContentLoaded = useCallback((sha: string) => {
     setCurrentFileSha(sha);
     setSelectedFile(prev => ({ ...prev, isNew: false }));
   }, [setCurrentFileSha, setSelectedFile]);
 
-  // Handlers for diff view
   const handleEnterDiffMode = useCallback((commitSha: string) => {
-      if (!selectedFile.path) return;
-      console.log(`Entering diff mode for file ${selectedFile.path}, commit ${commitSha}`);
+      const filePath = selectedFile.path;
+      if (!filePath) return;
+      console.log(`Entering diff mode for file ${filePath}, commit ${commitSha}`);
       setViewMode('diff');
       setDiffCommitSha(commitSha);
-  }, [selectedFile.path]);
+      queueMicrotask(() => { 
+         editorRef.current?.loadDiffContent(filePath, commitSha);
+      });
+  }, [selectedFile.path, editorRef]);
 
   const handleExitDiffMode = useCallback(() => {
+      const filePath = selectedFile.path;
       console.log('Exiting diff mode');
       setViewMode('edit');
       setDiffCommitSha(null);
-      // Optionally trigger a refresh of the current content? 
-      // Or assume Editor handles returning to editable state?
-  }, []);
+      if (filePath) {
+          queueMicrotask(() => {
+             editorRef.current?.loadContent(filePath);
+          });
+      }
+  }, [selectedFile.path, editorRef]);
 
   if (isLoadingConnection) {
     return (
@@ -128,6 +147,7 @@ export default function NotesPage() {
           <ResizablePanel defaultSize={75}>
             <div className="h-full">
               <Editor
+                ref={editorRef}
                 selectedFilePath={selectedFile?.path}
                 isNewFile={selectedFile?.isNew}
                 currentFileSha={currentFileSha}

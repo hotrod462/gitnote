@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Toolbar from './Toolbar'; // Import the toolbar
@@ -12,7 +12,11 @@ import { set as idbSet, get as idbGet } from 'idb-keyval'; // Import idb-keyval 
 import debounce from 'lodash.debounce'; // Import debounce
 import CommitMessageModal from '@/components/CommitMessageModal'; // Use default import
 import { toast } from 'sonner'; // Import toast
-import { Button } from '@/components/ui/button'; // Import Button
+import { Button } from '@/components/ui/button';
+import { diffLines, type Change } from 'diff'; // Import diffLines and Change from the correct package
+import { DiffHighlightExtension } from './editor/DiffHighlightExtension'; // Import the custom extension
+import { Markdown } from 'tiptap-markdown';
+import { pluginKey } from './editor/DiffHighlightExtension'; // Import the plugin key
 
 // Define possible view modes (also defined in NotesPage, consider centralizing)
 type ViewMode = 'edit' | 'diff'; 
@@ -36,109 +40,190 @@ interface EditorProps {
 // Debounce time for autosave
 const AUTOSAVE_DEBOUNCE_MS = 1000; // 1 second
 
-// Accept props
-export default function Editor({ selectedFilePath, currentFileSha, onContentLoaded, isNewFile, repoFullName, viewMode, diffCommitSha, onExitDiffMode, onEnterDiffModeRequest }: EditorProps) {
+// Define the interface for the functions exposed via the ref
+export interface EditorRef {
+  loadContent: (filePath: string) => void;
+  loadDiffContent: (filePath: string, commitSha: string) => void;
+  handleNewFile: (filePath: string) => void;
+}
+
+// Wrap component with forwardRef to accept a ref
+const Editor = forwardRef<EditorRef, EditorProps>((
+  { 
+    selectedFilePath, 
+    currentFileSha, 
+    onContentLoaded, 
+    isNewFile, 
+    repoFullName, 
+    viewMode, 
+    diffCommitSha, 
+    onExitDiffMode, 
+    onEnterDiffModeRequest
+  },
+  ref
+) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false); // State for save operation
-  const [isCommitModalOpen, setIsCommitModalOpen] = useState(false); // State for modal
+  const [isSaving, setIsSaving] = useState(false);
+  const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
   const [externalChangeDetected, setExternalChangeDetected] = useState(false);
-  const [isCheckingSha, setIsCheckingSha] = useState(false); // Loading state for SHA check
+  const [isCheckingSha, setIsCheckingSha] = useState(false);
+  const [diffResult, setDiffResult] = useState<Change[] | null>(null);
 
-  // Ref to store the debounced save function
   const debouncedSave = useRef<
     ReturnType<typeof debounce<(content: string) => void>> | undefined
   >(undefined);
 
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
-      StarterKit, // Includes Bold, Italic, Paragraph, etc.
-      // TODO: Add other extensions later if needed (e.g., Link, Table, TaskList)
+      Markdown.configure({
+          html: false, 
+          tightLists: true, 
+      }),
+      StarterKit.configure({
+        // Heading is enabled here
+      }),
+      DiffHighlightExtension.configure({
+        diffResult: diffResult,
+      })
     ],
-    content: '', // Initial content is empty
-    // Basic editor appearance
+    content: '',
     editorProps: {
       attributes: {
-        // Adjusted classes for better integration within the panel
         class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl focus:outline-none flex-grow p-4 border rounded-b-md overflow-y-auto',
       },
     },
-    // Control editable state based on viewMode and loading
-    editable: viewMode === 'edit' && !isLoading, 
-
-    // Autosave onUpdate handler (only in edit mode)
+    editable: viewMode === 'edit' && !isLoading,
     onUpdate: ({ editor }) => {
-      // Trigger the debounced save function
-      if (selectedFilePath && debouncedSave.current) {
-          // Use getHTML() or getText() depending on desired format
-          debouncedSave.current(editor.getHTML()); 
-      }
+        if (viewMode === 'edit' && selectedFilePath && debouncedSave.current) {
+            debouncedSave.current(editor.getHTML()); 
+        }
     },
   });
 
-  // Effect to initialize debounced save function
-  useEffect(() => {
-    if (!selectedFilePath) {
-      // If no file selected, cancel any pending saves
-      debouncedSave.current?.cancel();
-      return;
-    }
-    
-    // Create the debounced function for the current selected file path
-    debouncedSave.current = debounce((content: string) => {
-      console.log(`Autosaving to IndexedDB for: ${selectedFilePath}`);
-      idbSet(selectedFilePath, content)
-        .then(() => console.log(`Autosave successful for ${selectedFilePath}`))
-        .catch((err) => console.error(`Autosave failed for ${selectedFilePath}:`, err));
-    }, AUTOSAVE_DEBOUNCE_MS);
-
-    // Cleanup function to cancel debounced save on component unmount or path change
-    return () => {
-      debouncedSave.current?.flush(); // Save any pending changes immediately before changing file/unmounting
-      debouncedSave.current?.cancel(); // Cancel subsequent calls
-    };
-  }, [selectedFilePath]); // Recreate when file path changes
-
-  // Encapsulate content loading logic for reuse
-  const loadContent = useCallback(async (filePath: string) => {
+  const loadContentInternal = useCallback(async (filePath: string, mode: ViewMode, historicalSha: string | null) => {
     if (!editor) return;
+    console.log(`loadContentInternal called`, { filePath, mode, historicalSha });
     setIsLoading(true);
     setError(null);
-    setExternalChangeDetected(false); // Reset external change flag on load
-    editor.setEditable(false);
-    try {
-      // Fetch content based on view mode
-      // Pass diffCommitSha if in diff mode, otherwise undefined
-      const shaToFetch = viewMode === 'diff' ? diffCommitSha ?? undefined : undefined;
-      console.log(`Loading content for: ${filePath}, Mode: ${viewMode}, Ref: ${shaToFetch || 'HEAD'}`);
-      
-      const data = await getFileContent(filePath, shaToFetch);
-      if (data) {
-        editor.commands.setContent(data.content);
-        // Only update the *main* currentFileSha when loading latest (edit mode)
-        if (viewMode === 'edit') {
-           onContentLoaded(data.sha); 
+    setExternalChangeDetected(false);
+    // No longer set diffResult state directly here
+    // setDiffResult(null); 
+    
+    // Clear previous diff state in plugin when loading new content
+    // Check view and state exist before dispatching on init/clear
+    if (editor.view && editor.state) { // Simplified check
+        try {
+             editor.view.dispatch(
+                 editor.state.tr.setMeta(pluginKey, null) // Send null to clear
+             );
+        } catch (e) {
+            console.warn("Dispatch failed on clear, editor state might not be ready:", e);
         }
-        // Become editable only if in edit mode after loading
-        editor.setEditable(viewMode === 'edit'); 
-      } else {
-        setError(`File not found on GitHub: ${filePath}${shaToFetch ? ' at commit ' + shaToFetch.substring(0,7) : ''}`);
-        editor.commands.clearContent();
+    }
+
+    editor.setEditable(false); 
+    try {
+      if (mode === 'diff' && historicalSha) {
+          console.log(`Loading content for DIFF: ${filePath}, Commit: ${historicalSha}`);
+          const [historicalData, currentData] = await Promise.all([
+              getFileContent(filePath, historicalSha),
+              getFileContent(filePath)
+          ]);
+          if (historicalData && currentData) {
+              // Set content WITHOUT emitting update immediately, wait for transaction
+              editor.commands.setContent(historicalData.content, false);
+              const diff = diffLines(historicalData.content, currentData.content);
+              console.log('Diff calculated:', diff);
+              
+              // Dispatch transaction with diff data AFTER setting content
+              // Ensure view and state are available
+              if (editor.view && editor.state) { // Simplified check
+                  try {
+                       editor.view.dispatch(
+                           editor.state.tr.setMeta(pluginKey, diff)
+                       );
+                       console.log('Dispatched transaction with diff metadata');
+                  } catch (e) {
+                       console.error('Dispatch failed when sending diff metadata:', e);
+                  }
+              } else {
+                   console.error('Editor view/state not ready to dispatch diff metadata');
+              }
+
+          } else {
+              setError(`Could not load content for diff. Hist: ${!!historicalData}, Curr: ${!!currentData}`);
+              editor.commands.clearContent();
+          }
+      } else { 
+           // EDIT MODE
+           console.log(`Loading content for EDIT: ${filePath}`);
+           // Ensure diff state is cleared when entering edit mode
+           if (editor.view && editor.state) { // Simplified check
+                try {
+                     editor.view.dispatch(
+                         editor.state.tr.setMeta(pluginKey, null) // Send null to clear
+                     );
+                } catch (e) {
+                    console.warn("Dispatch failed on entering edit mode, editor state might not be ready:", e);
+                }
+           }
+           const data = await getFileContent(filePath);
+           if (data) {
+             // Set content AND emit update for edit mode
+             editor.commands.setContent(data.content);
+             onContentLoaded(data.sha);
+             editor.setEditable(true); 
+           } else {
+             setError(`File not found on GitHub: ${filePath}`);
+             editor.commands.clearContent();
+           }
       }
     } catch (err: any) {
-      console.error("Failed to load file content from GitHub:", err);
-      setError(err.message || "Could not load file content.");
-      editor.commands.clearContent();
+       console.error("Failed to load file content:", err);
+       setError(err.message || "Could not load file content.");
+       editor.commands.clearContent(); // Clear content on error too
     } finally {
       setIsLoading(false);
     }
-  }, [editor, onContentLoaded, viewMode, diffCommitSha]); // Add viewMode and diffCommitSha
+  }, [editor, onContentLoaded]);
 
-  // Effect to load content OR handle new file
+  const handleNewFileInternal = useCallback((filePath: string) => {
+      if (!editor) return;
+      console.log(`Handling new file creation for: ${filePath}`);
+      setIsLoading(false);
+      setError(null);
+      editor.commands.clearContent();
+      editor.setEditable(true);
+      setDiffResult(null); 
+      setExternalChangeDetected(false); 
+      idbSet(filePath, '')
+          .then(() => console.log(`Initialized IndexedDB for new file: ${filePath}`))
+          .catch((err) => console.error(`Failed to initialize IndexedDB for ${filePath}:`, err));
+  }, [editor]);
+
+  useImperativeHandle(ref, () => ({
+    loadContent: (filePath: string) => {
+        loadContentInternal(filePath, 'edit', null);
+    },
+    loadDiffContent: (filePath: string, commitSha: string) => {
+        loadContentInternal(filePath, 'diff', commitSha);
+    },
+    handleNewFile: (filePath: string) => {
+        handleNewFileInternal(filePath);
+    }
+  }), [loadContentInternal, handleNewFileInternal]);
+
+  useEffect(() => {
+    if (isNewFile && selectedFilePath && editor && !isLoading && !editor.isFocused) {
+        handleNewFileInternal(selectedFilePath);
+    }
+  }, [isNewFile, selectedFilePath, editor, isLoading, handleNewFileInternal]);
+
   useEffect(() => {
     if (!editor) return;
 
-    // Clear editor and stop if no file is selected
     if (!selectedFilePath) {
       editor?.commands.clearContent();
       editor?.setEditable(false);
@@ -147,37 +232,28 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
       return;
     }
 
-    // --- Handle New File Case --- 
     if (isNewFile) {
         console.log(`Handling new file creation for: ${selectedFilePath}`);
         setIsLoading(false);
         setError(null);
         editor?.commands.clearContent();
         editor?.setEditable(true);
-        // Initialize IndexedDB entry
         idbSet(selectedFilePath, '')
             .then(() => console.log(`Initialized IndexedDB for new file: ${selectedFilePath}`))
             .catch((err) => console.error(`Failed to initialize IndexedDB for ${selectedFilePath}:`, err));
-        return; // Skip fetching from GitHub
+        return;
     }
-    // --- End New File Case --- 
 
-    // --- Existing File Loading Logic --- 
-    // Use the encapsulated loadContent function
-    // Re-trigger loadContent when viewMode or diffCommitSha changes
-    loadContent(selectedFilePath);
+    loadContentInternal(selectedFilePath, 'edit', null);
 
-  }, [selectedFilePath, editor, onContentLoaded, isNewFile, loadContent, viewMode, diffCommitSha]); // Add viewMode & diffCommitSha deps
+  }, [selectedFilePath, editor, onContentLoaded, isNewFile, loadContentInternal]);
 
-  // Effect for proactive SHA check on page visibility change (only in edit mode)
   useEffect(() => {
     const handleVisibilityChange = async () => {
-        // Only run check if page becomes visible
         if (document.visibilityState !== 'visible') {
             return;
         }
         
-        // Also disable check if in diff mode or other conditions not met
         if (!selectedFilePath || isNewFile || !editor || isCheckingSha || !currentFileSha || viewMode === 'diff') { 
             return; 
         }
@@ -191,7 +267,6 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
                 setExternalChangeDetected(true);
             } else if (result.error) {
                 console.error('Error checking latest SHA:', result.error);
-                 // Optionally show a subtle error to the user?
             }
         } catch (err) {
             console.error('Unexpected error during SHA check:', err);
@@ -202,30 +277,23 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Cleanup listener on component unmount or when dependencies change
     return () => {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [selectedFilePath, currentFileSha, isNewFile, editor, isCheckingSha, viewMode]); // Add viewMode
+  }, [selectedFilePath, currentFileSha, isNewFile, editor, isCheckingSha, viewMode]);
 
-  // Handler to manually refresh content
   const handleRefreshContent = () => {
-    if (selectedFilePath) {
-      loadContent(selectedFilePath);
-    }
+    console.warn("Refresh requested. Parent should call editorRef.current.loadContent()."); 
   };
 
-  // Handler to open the commit message modal
   const handleRequestSave = () => {
     if (!editor || !selectedFilePath || !repoFullName) {
       console.error("Missing editor, file path, or repo name for save.");
       toast.error("Cannot save: Missing required information.");
       return;
     }
-     // Get latest content from editor immediately, don't wait for debounce
-    const currentContent = editor.getHTML(); 
-    console.log("Requesting save. Current content:", currentContent); // Log content being considered for save
-    // Ensure latest content is saved to IndexedDB before opening modal
+     const currentContent = editor.getHTML(); 
+    console.log("Requesting save. Current content:", currentContent);
     idbSet(selectedFilePath, currentContent)
       .then(() => {
         console.log(`Content for ${selectedFilePath} saved to IndexedDB before opening modal.`);
@@ -237,16 +305,10 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
       });
   };
 
-  // Handler for exiting diff mode
   const handleExitDiffClick = () => {
       onExitDiffMode();
-      // Trigger reload of current content after exiting
-      if (selectedFilePath) {
-         loadContent(selectedFilePath);
-      }
   }
 
-  // Handler for confirming save from the modal
   const handleConfirmSave = async (commitMessage: string) => {
     if (!editor || !selectedFilePath || !repoFullName) {
       console.error("Save confirmation failed: Missing editor, path, or repo name.");
@@ -256,54 +318,43 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
     setIsSaving(true);
     const toastId = toast.loading(`Saving draft: ${selectedFilePath}`);
     try {
-      // Retrieve the latest content from IndexedDB
       const contentToSave = await idbGet(selectedFilePath);
       if (contentToSave === undefined) {
         throw new Error("Could not retrieve content from local storage for saving.");
       }
       
       console.log(`Saving draft for ${selectedFilePath} with SHA ${currentFileSha || 'null (new file)'}`);
-      console.log("Content being saved:", contentToSave); // Log content being sent
+      console.log("Content being saved:", contentToSave);
 
-      // Call the server action
       const result = await saveDraft(
           selectedFilePath, 
           contentToSave, 
-          isNewFile ? undefined : currentFileSha || undefined, // Pass sha as 3rd arg
-          commitMessage // Pass commitMessage as 4th arg
+          isNewFile ? undefined : currentFileSha || undefined,
+          commitMessage
       );
 
-      // Check the result of the save operation
       if (result.success) {
-          // Update SHA if successful and a new SHA was returned
           if (result.sha) {
-              onContentLoaded(result.sha); // Update parent state with new SHA
+              onContentLoaded(result.sha);
           }
           toast.success(`Draft saved successfully: ${selectedFilePath}`, { id: toastId });
-          setIsCommitModalOpen(false); // Close modal on success
+          setIsCommitModalOpen(false);
       } else {
-          // Handle specific errors reported by the server action
           if (result.isConflict) {
              toast.error('Save Conflict: File changed on server. Please copy changes, refresh, and re-apply.', { id: toastId, duration: 10000 });
           } else {
-             // Use error message from result if available, otherwise generic
              toast.error(`Error saving draft: ${result.error || 'Unknown server error'}`, { id: toastId });
           }
-          // Keep modal open on error
       }
 
     } catch (err: any) { 
-        // Catch unexpected errors during the process (e.g., network issues before server action completes)
         console.error("Failed to save draft (catch block):", err);
         toast.error(`Error saving draft: ${err.message || 'An unexpected error occurred'}`, { id: toastId });
-        // Keep modal open on unexpected errors
     } finally {
-        // Reset saving state regardless of outcome
         setIsSaving(false);
     }
   };
 
-  // Render logic based on state
   let contentArea: React.ReactNode;
 
   if (isLoading) {
@@ -324,21 +375,21 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
           </Alert>
       </div>
     );
-  } else if (!selectedFilePath) {
+  } else if (!selectedFilePath && viewMode === 'edit') {
     contentArea = (
       <div className="flex-grow flex items-center justify-center text-muted-foreground">
         <p>Select a file from the tree or create a new one.</p>
       </div>
     );
   } else {
-    // Render editor content only when not loading, no error, and a file is selected
     contentArea = <EditorContent editor={editor} className="flex-grow overflow-y-auto"/>;
   }
 
   return (
-    // Ensure the outer div takes full height and uses flex column
-    <div className="w-full h-full flex flex-col">
-      {/* Diff Mode Banner */} 
+    <div 
+      key={`${viewMode}-${selectedFilePath || 'no-file'}-${diffCommitSha || 'no-diff'}`}
+      className="w-full h-full flex flex-col"
+    >
       {viewMode === 'diff' && diffCommitSha && (
           <Alert variant="default" className="m-2 flex items-center justify-between bg-blue-100 dark:bg-blue-900">
             <div className="flex items-center">
@@ -356,7 +407,6 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
           </Alert>
       )}
 
-      {/* External Change Alert */}  
       {externalChangeDetected && (
         <Alert variant="destructive" className="m-2 flex items-center justify-between">
           <div className="flex items-center">
@@ -374,27 +424,27 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
         </Alert>
       )}
 
-      {/* Pass onRequestSave and selectedFilePath to Toolbar */} 
-      {editor && editor.isEditable && repoFullName && !externalChangeDetected && (
+      {editor && viewMode === 'edit' && repoFullName && !externalChangeDetected && (
         <Toolbar 
           editor={editor} 
           onRequestSave={handleRequestSave} 
           selectedFilePath={selectedFilePath}
-          onSelectCommit={onEnterDiffModeRequest} // Pass NotesPage handler down
+          onSelectCommit={onEnterDiffModeRequest}
         />
       )}
-      {/* Render the appropriate content area */} 
       {contentArea}
-      {/* Render the commit modal */} 
       {selectedFilePath && repoFullName && (
          <CommitMessageModal
            open={isCommitModalOpen}
-           onOpenChange={setIsCommitModalOpen} // Use onOpenChange
-           onConfirmCommit={handleConfirmSave} // Correct prop name
-           fileName={selectedFilePath || 'New File'} // Correct prop name
-           // isLoading prop is removed as modal handles internal state
+           onOpenChange={setIsCommitModalOpen}
+           onConfirmCommit={handleConfirmSave}
+           fileName={selectedFilePath || 'New File'}
          />
       )}
     </div>
   );
-}
+})
+
+Editor.displayName = 'Editor';
+
+export default Editor;

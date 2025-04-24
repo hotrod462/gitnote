@@ -14,6 +14,9 @@ import CommitMessageModal from '@/components/CommitMessageModal'; // Use default
 import { toast } from 'sonner'; // Import toast
 import { Button } from '@/components/ui/button'; // Import Button
 
+// Define possible view modes (also defined in NotesPage, consider centralizing)
+type ViewMode = 'edit' | 'diff'; 
+
 // Define props interface
 interface EditorProps {
   selectedFilePath: string | null;
@@ -22,13 +25,19 @@ interface EditorProps {
   // Add isNew flag (will be passed from NotesPage later)
   isNewFile?: boolean; 
   repoFullName: string | null; // Need repo name for saving
+  
+  // Add props for diff view
+  viewMode: ViewMode;
+  diffCommitSha: string | null;
+  onExitDiffMode: () => void;
+  onEnterDiffModeRequest: (sha: string) => void; // Renamed prop
 }
 
 // Debounce time for autosave
 const AUTOSAVE_DEBOUNCE_MS = 1000; // 1 second
 
 // Accept props
-export default function Editor({ selectedFilePath, currentFileSha, onContentLoaded, isNewFile, repoFullName }: EditorProps) {
+export default function Editor({ selectedFilePath, currentFileSha, onContentLoaded, isNewFile, repoFullName, viewMode, diffCommitSha, onExitDiffMode, onEnterDiffModeRequest }: EditorProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false); // State for save operation
@@ -54,10 +63,10 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
         class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl focus:outline-none flex-grow p-4 border rounded-b-md overflow-y-auto',
       },
     },
-    // Make editor initially read-only until content loads or new file
-    editable: false, 
+    // Control editable state based on viewMode and loading
+    editable: viewMode === 'edit' && !isLoading, 
 
-    // Autosave onUpdate handler
+    // Autosave onUpdate handler (only in edit mode)
     onUpdate: ({ editor }) => {
       // Trigger the debounced save function
       if (selectedFilePath && debouncedSave.current) {
@@ -98,14 +107,22 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
     setExternalChangeDetected(false); // Reset external change flag on load
     editor.setEditable(false);
     try {
-      console.log(`Loading existing file content for: ${filePath}`);
-      const data = await getFileContent(filePath);
+      // Fetch content based on view mode
+      // Pass diffCommitSha if in diff mode, otherwise undefined
+      const shaToFetch = viewMode === 'diff' ? diffCommitSha ?? undefined : undefined;
+      console.log(`Loading content for: ${filePath}, Mode: ${viewMode}, Ref: ${shaToFetch || 'HEAD'}`);
+      
+      const data = await getFileContent(filePath, shaToFetch);
       if (data) {
         editor.commands.setContent(data.content);
-        onContentLoaded(data.sha);
-        editor.setEditable(true);
+        // Only update the *main* currentFileSha when loading latest (edit mode)
+        if (viewMode === 'edit') {
+           onContentLoaded(data.sha); 
+        }
+        // Become editable only if in edit mode after loading
+        editor.setEditable(viewMode === 'edit'); 
       } else {
-        setError(`File not found on GitHub: ${filePath}`);
+        setError(`File not found on GitHub: ${filePath}${shaToFetch ? ' at commit ' + shaToFetch.substring(0,7) : ''}`);
         editor.commands.clearContent();
       }
     } catch (err: any) {
@@ -115,7 +132,7 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
     } finally {
       setIsLoading(false);
     }
-  }, [editor, onContentLoaded]);
+  }, [editor, onContentLoaded, viewMode, diffCommitSha]); // Add viewMode and diffCommitSha
 
   // Effect to load content OR handle new file
   useEffect(() => {
@@ -147,19 +164,25 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
 
     // --- Existing File Loading Logic --- 
     // Use the encapsulated loadContent function
+    // Re-trigger loadContent when viewMode or diffCommitSha changes
     loadContent(selectedFilePath);
 
-  }, [selectedFilePath, editor, onContentLoaded, isNewFile, loadContent]); // Add loadContent dependency
+  }, [selectedFilePath, editor, onContentLoaded, isNewFile, loadContent, viewMode, diffCommitSha]); // Add viewMode & diffCommitSha deps
 
-  // Effect for proactive SHA check on window focus
+  // Effect for proactive SHA check on page visibility change (only in edit mode)
   useEffect(() => {
-    const handleFocus = async () => {
-        if (!selectedFilePath || isNewFile || !editor || isCheckingSha || !currentFileSha) {
-             // Don't check if no file, new file, no editor, already checking, or no initial SHA loaded
+    const handleVisibilityChange = async () => {
+        // Only run check if page becomes visible
+        if (document.visibilityState !== 'visible') {
+            return;
+        }
+        
+        // Also disable check if in diff mode or other conditions not met
+        if (!selectedFilePath || isNewFile || !editor || isCheckingSha || !currentFileSha || viewMode === 'diff') { 
             return; 
         }
 
-        console.log('Window focused, checking for external changes...');
+        console.log('Page became visible, checking for external changes...');
         setIsCheckingSha(true);
         try {
             const result = await getLatestFileSha(selectedFilePath);
@@ -177,13 +200,13 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
         }
     };
 
-    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Cleanup listener on component unmount or when dependencies change
     return () => {
-        window.removeEventListener('focus', handleFocus);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [selectedFilePath, currentFileSha, isNewFile, editor, isCheckingSha]); // Dependencies for the focus check
+  }, [selectedFilePath, currentFileSha, isNewFile, editor, isCheckingSha, viewMode]); // Add viewMode
 
   // Handler to manually refresh content
   const handleRefreshContent = () => {
@@ -213,6 +236,15 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
         toast.error("Failed to save content locally before committing.");
       });
   };
+
+  // Handler for exiting diff mode
+  const handleExitDiffClick = () => {
+      onExitDiffMode();
+      // Trigger reload of current content after exiting
+      if (selectedFilePath) {
+         loadContent(selectedFilePath);
+      }
+  }
 
   // Handler for confirming save from the modal
   const handleConfirmSave = async (commitMessage: string) => {
@@ -306,6 +338,24 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
   return (
     // Ensure the outer div takes full height and uses flex column
     <div className="w-full h-full flex flex-col">
+      {/* Diff Mode Banner */} 
+      {viewMode === 'diff' && diffCommitSha && (
+          <Alert variant="default" className="m-2 flex items-center justify-between bg-blue-100 dark:bg-blue-900">
+            <div className="flex items-center">
+                <AlertCircle className="h-4 w-4 mr-2 text-blue-700 dark:text-blue-300" />
+                <div>
+                  <AlertTitle className="text-blue-800 dark:text-blue-200">Viewing History</AlertTitle>
+                  <AlertDescription className="text-blue-700 dark:text-blue-300">
+                    Viewing content from commit {diffCommitSha.substring(0, 7)}. Editor is read-only.
+                  </AlertDescription>
+                </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleExitDiffClick}> 
+              Exit Diff View
+            </Button>
+          </Alert>
+      )}
+
       {/* External Change Alert */}  
       {externalChangeDetected && (
         <Alert variant="destructive" className="m-2 flex items-center justify-between">
@@ -330,6 +380,7 @@ export default function Editor({ selectedFilePath, currentFileSha, onContentLoad
           editor={editor} 
           onRequestSave={handleRequestSave} 
           selectedFilePath={selectedFilePath}
+          onSelectCommit={onEnterDiffModeRequest} // Pass NotesPage handler down
         />
       )}
       {/* Render the appropriate content area */} 

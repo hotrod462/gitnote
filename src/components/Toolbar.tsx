@@ -11,9 +11,10 @@ interface ToolbarProps {
   editor: Editor | null;
   onRequestSave: () => void;
   selectedFilePath: string | null;
+  onSelectCommit: (sha: string) => void;
 }
 
-export default function Toolbar({ editor, onRequestSave, selectedFilePath }: ToolbarProps) {
+export default function Toolbar({ editor, onRequestSave, selectedFilePath, onSelectCommit }: ToolbarProps) {
   if (!editor) {
     return null; // Or return a disabled toolbar state
   }
@@ -53,7 +54,10 @@ export default function Toolbar({ editor, onRequestSave, selectedFilePath }: Too
         </Button>
         {/* Render History Popover only if a file path is selected */}
         {selectedFilePath && (
-          <HistoryPopover filePath={selectedFilePath} />
+          <HistoryPopover 
+            filePath={selectedFilePath} 
+            onSelectCommit={onSelectCommit}
+          />
         )}
       </div>
     </div>

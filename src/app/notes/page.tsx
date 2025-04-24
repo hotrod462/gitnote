@@ -16,6 +16,9 @@ import FileTree from '@/components/FileTree';
 import Editor from '@/components/Editor';
 import { Skeleton } from '@/components/ui/skeleton';
 
+// Define possible view modes
+type ViewMode = 'edit' | 'diff';
+
 interface SelectedFileState {
   path: string | null;
   isNew: boolean;
@@ -26,6 +29,8 @@ export default function NotesPage() {
   const [isLoadingConnection, setIsLoadingConnection] = useState(true);
   const [selectedFile, setSelectedFile] = useState<SelectedFileState>({ path: null, isNew: false });
   const [currentFileSha, setCurrentFileSha] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('edit');
+  const [diffCommitSha, setDiffCommitSha] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -61,6 +66,22 @@ export default function NotesPage() {
     setCurrentFileSha(sha);
     setSelectedFile(prev => ({ ...prev, isNew: false }));
   }, [setCurrentFileSha, setSelectedFile]);
+
+  // Handlers for diff view
+  const handleEnterDiffMode = useCallback((commitSha: string) => {
+      if (!selectedFile.path) return;
+      console.log(`Entering diff mode for file ${selectedFile.path}, commit ${commitSha}`);
+      setViewMode('diff');
+      setDiffCommitSha(commitSha);
+  }, [selectedFile.path]);
+
+  const handleExitDiffMode = useCallback(() => {
+      console.log('Exiting diff mode');
+      setViewMode('edit');
+      setDiffCommitSha(null);
+      // Optionally trigger a refresh of the current content? 
+      // Or assume Editor handles returning to editable state?
+  }, []);
 
   if (isLoadingConnection) {
     return (
@@ -112,6 +133,10 @@ export default function NotesPage() {
                 currentFileSha={currentFileSha}
                 onContentLoaded={handleContentLoaded}
                 repoFullName={connection.repoFullName}
+                viewMode={viewMode}
+                diffCommitSha={diffCommitSha}
+                onExitDiffMode={handleExitDiffMode}
+                onEnterDiffModeRequest={handleEnterDiffMode}
               />
             </div>
           </ResizablePanel>

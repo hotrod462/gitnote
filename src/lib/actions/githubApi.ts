@@ -112,10 +112,14 @@ export async function getFileTree(path: string = ''): Promise<FileTreeItem[]> {
 
 /**
  * Fetches the content and SHA of a specific file from the user's repository.
+ * Can optionally specify a ref (SHA, branch, tag) to get content from.
  */
-export async function getFileContent(filePath: string): Promise<{ content: string; sha: string } | null> {
+export async function getFileContent(
+    filePath: string, 
+    ref?: string // Optional ref (e.g., commit SHA) to fetch historical content
+): Promise<{ content: string; sha: string } | null> { // Note: SHA returned might be the blob SHA, not commit SHA when ref is used
   noStore();
-  console.log(`getFileContent called for path: "${filePath}"`);
+  console.log(`getFileContent called for path: "${filePath}", ref: ${ref || 'default branch'}`);
   
   let octokit;
   let repoFullName: string;
@@ -139,6 +143,7 @@ export async function getFileContent(filePath: string): Promise<{ content: strin
       owner,
       repo,
       path: filePath,
+      ref: ref, // Pass the ref parameter here
     });
 
     // Type guard to ensure we received file content data
@@ -150,7 +155,8 @@ export async function getFileContent(filePath: string): Promise<{ content: strin
     // Decode content from Base64
     const decodedContent = Buffer.from(data.content, 'base64').toString('utf8');
     
-    console.log(`getFileContent successfully fetched SHA ${data.sha} for path: "${filePath}"`);
+    // When fetching with ref, data.sha is the blob SHA for that version
+    console.log(`getFileContent successfully fetched blob SHA ${data.sha} for path: "${filePath}" at ref: ${ref || 'default branch'}`);
     return { content: decodedContent, sha: data.sha };
 
   } catch (error: unknown) {

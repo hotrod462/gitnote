@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useRef } from 'react'; // Add useRef
-import { FileTreeItem } from '@/lib/actions/githubApi';
+// import { FileTreeItem } from '@/lib/actions/githubApi';
+import type { FileTreeItem } from '@/lib/actions/github/fileTree'; // Import type directly
 import { Skeleton } from "@/components/ui/skeleton";
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
 import { Button } from "@/components/ui/button";

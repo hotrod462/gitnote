@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getFileTree, type FileTreeItem } from '@/lib/actions/githubApi';
+// import { getFileTree, type FileTreeItem } from '@/lib/actions/githubApi';
+import { getFileTree } from '@/lib/actions/githubApi';
+import type { FileTreeItem } from '@/lib/actions/github/fileTree'; // Import type directly
 import { useToast } from "@/hooks/use-toast"; // Toast might be needed for fetch errors here
 
 // Props for the hook (currently none, but might add later)

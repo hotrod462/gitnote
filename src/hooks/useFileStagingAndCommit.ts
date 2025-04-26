@@ -1,9 +1,10 @@
- 'use client';
+'use client';
 
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import * as Diff from 'diff';
-import { getFileContent, commitMultipleFiles, StagedFileCommitDetails } from '@/lib/actions/githubApi';
+import { getFileContent, commitMultipleFiles } from '@/lib/actions/githubApi';
+import type { StagedFileCommitDetails } from '@/lib/actions/github/commitOperations'; // Import type directly
 
 // Input type expected by the hook
 interface UseFileStagingAndCommitProps {

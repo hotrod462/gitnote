@@ -2,7 +2,8 @@
 
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getFileTree, type FileTreeItem, createFolder, createOrUpdateFile, deleteFile, renameFile } from '@/lib/actions/githubApi';
+import { getFileTree, createFolder, createOrUpdateFile, deleteFile, renameFile } from '@/lib/actions/githubApi';
+import type { FileTreeItem } from '@/lib/actions/github/fileTree'; // Import type directly
 import { Skeleton } from "@/components/ui/skeleton";
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
 import { Button } from "@/components/ui/button";

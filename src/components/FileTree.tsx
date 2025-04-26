@@ -16,11 +16,13 @@ import CreateItemDialog from './CreateItemDialog';
 import DeleteConfirmationDialog from './DeleteConfirmationDialog';
 import RenameDialog from './RenameDialog';
 import posthog from 'posthog-js';
+import { useDropzone } from 'react-dropzone';
 
 // Define props interface
 interface FileTreeProps {
   selectedFilePath: string | null;
   onFileSelect: (selection: { path: string; isNew?: boolean }) => void;
+  onFileDrop: (files: File[], targetFolder: string) => void;
 }
 
 // Recursive component to render tree items
@@ -35,6 +37,7 @@ interface RenderTreeItemProps {
   onFileClick: (selection: { path: string; isNew?: boolean }) => void;
   onRequestDelete: (item: FileTreeItem) => void;
   onRequestRename: (item: FileTreeItem) => void;
+  onFileDrop: (files: File[], targetFolder: string) => void;
 }
 
 const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
@@ -47,12 +50,25 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   onFolderToggle,
   onFileClick,
   onRequestDelete,
-  onRequestRename
+  onRequestRename,
+  onFileDrop
 }) => {
   const isExpanded = expandedFolders.has(item.path);
   const isLoading = loadingFolders.has(item.path);
   const children = childrenCache[item.path];
   const indentStyle = { paddingLeft: `${level * 1.25}rem` };
+
+  const isFolder = item.type === 'dir';
+  const { getRootProps, isDragActive } = useDropzone({
+    onDrop: (acceptedFiles) => {
+      if (isFolder) {
+        onFileDrop(acceptedFiles, item.path);
+      }
+    },
+    noClick: true,
+    noKeyboard: true,
+    disabled: !isFolder,
+  });
 
   const handleItemClick = () => {
     if (item.type === 'dir') {
@@ -63,7 +79,10 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   };
 
   return (
-    <li key={item.path} className="group relative">
+    <li key={item.path} {...(isFolder ? getRootProps() : {})} className={`group relative ${isFolder ? 'outline-none' : ''}`}>
+      {isFolder && isDragActive && (
+        <div className="absolute inset-0 bg-blue-100/50 dark:bg-blue-900/50 border-2 border-dashed border-blue-500 rounded-md z-10 pointer-events-none"></div>
+      )}
       <div className="flex items-center justify-between w-full rounded hover:bg-accent pr-1">
         <button
           onClick={handleItemClick}
@@ -117,8 +136,7 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
         </DropdownMenu>
       </div>
 
-      {/* --- RESTORE children/loading rendering --- */}
-       {isExpanded && children && (
+      {isExpanded && children && (
           <ul className="space-y-1 mt-1">
               {children.length === 0 && (
                   <li className="text-muted-foreground text-xs" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
@@ -138,6 +156,7 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
                       onFileClick={onFileClick}
                       onRequestDelete={onRequestDelete}
                       onRequestRename={onRequestRename}
+                      onFileDrop={onFileDrop}
                   />
               ))}
           </ul>
@@ -164,7 +183,7 @@ const getParentDirectory = (filePath: string | null): string => {
 };
 
 // Main FileTree component
-export default function FileTree({ selectedFilePath, onFileSelect }: FileTreeProps) {
+export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }: FileTreeProps) {
   const [treeData, setTreeData] = useState<FileTreeItem[]>([]);
   const [childrenCache, setChildrenCache] = useState<Record<string, FileTreeItem[]>>({});
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -186,6 +205,12 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
   // Rename Dialog State
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [itemToRename, setItemToRename] = useState<FileTreeItem | null>(null);
+
+  const { getRootProps: getRootContainerProps, isDragActive: isRootDragActive } = useDropzone({
+      onDrop: (acceptedFiles) => onFileDrop(acceptedFiles, ''),
+      noClick: true,
+      noKeyboard: true,
+  });
 
   // Fetch initial root tree data
   useEffect(() => {
@@ -519,8 +544,13 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
   }, [itemToRename, treeData, childrenCache, toast, selectedFilePath, onFileSelect]);
 
   return (
-    <div className="h-full w-full p-2 border-r bg-muted/40 overflow-y-auto flex flex-col">
-      <div className="flex justify-between items-center mb-2 px-2">
+    <div {...getRootContainerProps()} className="h-full flex flex-col relative">
+      {isRootDragActive && (
+        <div className="absolute inset-0 bg-green-100/50 dark:bg-green-900/50 border-2 border-dashed border-green-500 rounded-md z-10 pointer-events-none flex items-center justify-center text-green-700 dark:text-green-300">
+            Drop files here to add to root
+        </div>
+      )}
+      <div className="flex-shrink-0 flex justify-between items-center p-2 border-b">
         <h2 className="text-lg font-semibold">Explorer</h2>
         <div className="space-x-1">
            <Button variant="ghost" size="icon" onClick={handleRequestCreateFile} title="New File">
@@ -531,47 +561,29 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
            </Button>
         </div>
       </div>
-      
-      {/* Tree rendering area (needs flex-grow) */} 
-      <div className="flex-grow overflow-y-auto">
-          {isInitialLoading && (
-            <div className="space-y-2 p-2">
-              <Skeleton className="h-5 w-full" />
-              <Skeleton className="h-5 w-11/12" />
-              <Skeleton className="h-5 w-10/12" />
-            </div>
-          )}
-    
-          {error && (
-            <p className="text-destructive px-2">Error: {error}</p>
-          )}
-    
-          {!isInitialLoading && !error && treeData.length === 0 && (
-             <p className="text-muted-foreground px-2 text-sm">Repository is empty.</p>
-          )}
-    
-          {!isInitialLoading && !error && treeData.length > 0 && (
-            <ul className="space-y-1">
-              {treeData.map((item) => (
-                <RenderTreeItem
-                  key={item.path}
-                  item={item}
-                  level={0} 
-                  selectedFilePath={selectedFilePath}
-                  expandedFolders={expandedFolders}
-                  loadingFolders={loadingFolders}
-                  childrenCache={childrenCache}
-                  onFolderToggle={handleFolderToggle}
-                  onFileClick={handleFileClick}
-                  onRequestDelete={handleRequestDelete}
-                  onRequestRename={handleRequestRename}
-                />
-              ))}
-            </ul>
-          )}
+      <div className="flex-grow overflow-auto py-1 pr-1">
+        {treeData.length === 0 && !isInitialLoading && (
+         <p className="text-muted-foreground px-2 text-sm">Repository is empty.</p>
+        )}
+        <ul className="space-y-1">
+          {treeData.map((item) => (
+            <RenderTreeItem
+              key={item.path}
+              item={item}
+              level={0}
+              selectedFilePath={selectedFilePath}
+              expandedFolders={expandedFolders}
+              loadingFolders={loadingFolders}
+              childrenCache={childrenCache}
+              onFolderToggle={handleFolderToggle}
+              onFileClick={handleFileClick}
+              onRequestDelete={handleRequestDelete}
+              onRequestRename={handleRequestRename}
+              onFileDrop={onFileDrop}
+            />
+          ))}
+        </ul>
       </div>
-
-      {/* Render the extracted Create Dialog */} 
       <CreateItemDialog 
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
@@ -579,8 +591,6 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
         targetDirectory={createItemTargetDir}
         onCreateConfirm={handleConfirmCreate}
       />
-
-      {/* Render extracted Delete Dialog */} 
       <DeleteConfirmationDialog 
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
@@ -589,8 +599,6 @@ export default function FileTree({ selectedFilePath, onFileSelect }: FileTreePro
         onConfirmDelete={handleConfirmDelete}
         onClearError={() => setDeleteError(null)}
       />
-
-      {/* Render extracted Rename Dialog */} 
       <RenameDialog 
         open={isRenameDialogOpen}
         onOpenChange={setIsRenameDialogOpen}

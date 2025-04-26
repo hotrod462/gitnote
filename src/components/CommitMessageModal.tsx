@@ -158,7 +158,6 @@ export default function CommitMessageModal({
             <Button 
               type="submit" 
               disabled={isFetchingMessage || isCommitting || !commitMessage.trim()}
-              className="dark:bg-white dark:text-black dark:hover:bg-gray-200"
             >
               {isCommitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Changes

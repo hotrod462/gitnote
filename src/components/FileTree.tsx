@@ -125,14 +125,12 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
         </div>
       )}
       <div className="flex-shrink-0 flex justify-between items-center p-2 border-b">
-        <div className="flex items-center gap-1">
-          <h2 className="text-lg font-semibold">Explorer</h2>
-          <FileUploadButton 
-            onFileDrop={onFileDrop} 
-            getTargetDirectory={getCurrentTargetDirectory} 
-          />
-        </div>
-        <div className="space-x-1">
+        <h2 className="text-lg font-semibold">Explorer</h2>
+        <div className="flex items-center space-x-1">
+           <FileUploadButton 
+             onFileDrop={onFileDrop} 
+             getTargetDirectory={getCurrentTargetDirectory} 
+           />
            <Button variant="ghost" size="icon" onClick={handleRequestCreateFile} title="New File">
               <FilePlus className="h-4 w-4" />
            </Button>

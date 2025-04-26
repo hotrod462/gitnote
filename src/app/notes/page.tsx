@@ -102,7 +102,7 @@ export default function NotesPage() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.push('/login'); // Consider using '/' if that's the main login/landing page
+    router.push('/'); // Redirect to the root page which handles login state
   };
 
   const handleFileSelect = useCallback((selection: { path: string; isNew?: boolean }) => {

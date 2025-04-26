@@ -25,6 +25,7 @@ interface CommitMessageModalProps {
   title?: string; // Optional custom title
   isLoading?: boolean; // Optional loading state
   stagedFilePaths?: string[]; // Optional list of staged files for display
+  isFetchingMessage?: boolean; // Add prop for message fetching state
 }
 
 export default function CommitMessageModal({ 
@@ -35,20 +36,30 @@ export default function CommitMessageModal({
   initialMessage = '',
   title = 'Save Draft', // Default title
   isLoading = false,
-  stagedFilePaths = [] // Default to empty array
+  stagedFilePaths = [], // Default to empty array
+  isFetchingMessage = false // Default to false
 }: CommitMessageModalProps) {
   const [commitMessage, setCommitMessage] = useState('');
-  const [isCommitting, setIsCommitting] = useState(false);
+  const [isCommitting, setIsCommitting] = useState(isLoading);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset state when dialog opens
+  // Reset state when dialog opens or isLoading changes
   useEffect(() => {
+    setIsCommitting(isLoading); // Sync internal state with prop
     if (open) {
-      setCommitMessage(initialMessage || `Update ${fileName}`); // Use initial or generate default
-      setIsCommitting(false);
+      if (!isFetchingMessage) {
+        setCommitMessage(initialMessage || `Update ${fileName}`);
+      }
       setError(null);
     }
-  }, [open, initialMessage, fileName]);
+  }, [open, initialMessage, fileName, isFetchingMessage, isLoading]); // Add isLoading dependency
+
+  // Update message when fetching completes (prop changes)
+  useEffect(() => {
+    if (open && !isFetchingMessage) {
+      setCommitMessage(initialMessage || `Update ${fileName}`);
+    }
+  }, [initialMessage, isFetchingMessage, open, fileName]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -64,25 +75,17 @@ export default function CommitMessageModal({
       return;
     }
     
-    setIsCommitting(true);
+    setIsCommitting(true); // Set internal state immediately
     setError(null);
     try {
       await onConfirmCommit(trimmedMessage);
-      // Success handled by parent (closes dialog, shows toast)
-      // onOpenChange(false); // Let parent handle closing on success
     } catch (err: unknown) {
       console.error("Commit failed:", err);
-      // Check if err is an Error instance before accessing message
       setError(err instanceof Error ? err.message : "Failed to save changes.");
-      // Keep dialog open on error
-    } finally {
-      // Only set loading false if dialog is still open (error occurred)
-      if (open && error === null) { 
-           // If it succeeded the parent should have closed it.
-      } else {
-          setIsCommitting(false); 
-      }
+      // Keep dialog open on error, set loading false
+      setIsCommitting(false); 
     }
+    // Do NOT set isCommitting false here on success, parent will close modal which resets state via useEffect
   };
   
   // Handle closing the dialog (e.g., clicking X or Cancel)
@@ -116,16 +119,23 @@ export default function CommitMessageModal({
           <div className="grid gap-4 py-4">
             <div className="grid w-full items-center gap-1.5">
               <Label htmlFor="commit-message">Commit Message</Label>
-              <Textarea 
-                id="commit-message" 
-                placeholder="Enter your commit message..."
-                value={commitMessage}
-                onChange={(e) => setCommitMessage(e.target.value)}
-                rows={3}
-                className="min-h-[80px]"
-                aria-label="Commit message"
-                disabled={isCommitting}
-              />
+              <div className="relative">
+                <Textarea 
+                  id="commit-message" 
+                  placeholder={isFetchingMessage ? "Generating commit message..." : "Enter your commit message..."}
+                  value={commitMessage}
+                  onChange={(e) => setCommitMessage(e.target.value)}
+                  rows={3}
+                  className="min-h-[80px]"
+                  aria-label="Commit message"
+                  disabled={isCommitting || isFetchingMessage}
+                />
+                {isFetchingMessage && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+              </div>
             </div>
              {error && (
                 <p className="text-sm text-destructive">Error: {error}</p>
@@ -137,9 +147,9 @@ export default function CommitMessageModal({
             </DialogClose>
             <Button 
               type="submit" 
-              disabled={isCommitting || !commitMessage.trim()}
+              disabled={isFetchingMessage || isCommitting || !commitMessage.trim()}
             >
-              {isCommitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isCommitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Changes
             </Button>
           </DialogFooter>

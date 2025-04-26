@@ -29,7 +29,8 @@ export interface CommitInfo {
 // Renamed to avoid conflict with existing CommitInfo
 export interface StagedFileCommitDetails {
   path: string;
-  content: string | ArrayBuffer; // Content from staged state
+  content: string; // Content is now always string (base64 or utf-8)
+  encoding: 'utf-8' | 'base64'; // Indicates how content is encoded
 }
 // --- V2 Interfaces End ---
 
@@ -678,26 +679,14 @@ export async function commitMultipleFiles(
     // 4. Create blob objects for each file content
     console.log("Creating blobs for staged files...");
     const blobPromises = filesToCommit.map(async (file) => {
-        let contentString: string;
-        if (typeof file.content === 'string') {
-            contentString = file.content;
-        } else if (file.content instanceof ArrayBuffer) {
-            // Decode ArrayBuffer assuming UTF-8 (adjust if needed for binary files)
-            contentString = Buffer.from(file.content).toString('utf-8');
-        } else {
-            console.error(`Unsupported content type for file ${file.path}:`, typeof file.content);
-            throw new Error(`Unsupported content type for file ${file.path}`);
-        }
-
-        // Use Base64 encoding for blob content
-        const base64Content = Buffer.from(contentString, 'utf-8').toString('base64');
-
-        console.log(`Creating blob for path: ${file.path}`);
+        // Content is already a string (either utf-8 or base64)
+        // Encoding is provided in file.encoding
+        console.log(`Creating blob for path: ${file.path} with encoding: ${file.encoding}`);
         const { data: blobData } = await octokit.rest.git.createBlob({
             owner,
             repo,
-            content: base64Content,
-            encoding: 'base64',
+            content: file.content, // Pass content directly
+            encoding: file.encoding, // Pass encoding directly
         });
         console.log(`Created blob for ${file.path} - SHA: ${blobData.sha}`);
         return {

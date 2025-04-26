@@ -115,25 +115,25 @@ export default function NotesPage() {
     setSelectedFile({ path: newPath, isNew });
     setCurrentFileSha(null);
 
-    // Basic heuristic to check if the selected path looks like a file
-    // Should match the one in FileTree.tsx
-    const looksLikeFile = newPath && /\.(tsx|ts|js|jsx|md|json|html|css|gitignore|env|example|lock|mjs)$/i.test(newPath);
+    // Check if it's the root placeholder or looks like a file
+    const isRootPlaceholder = newPath === '.';
+    const looksLikeFile = newPath && !isRootPlaceholder && /\.(tsx|ts|js|jsx|md|json|html|css|gitignore|env|example|lock|mjs)$/i.test(newPath);
 
     // Show editor only when a file-like path is selected
     if (newPath && looksLikeFile && !isEditorVisible) {
         setIsEditorVisible(true);
     }
 
-    if (newPath) {
+    // Don't try to load content for the root placeholder
+    if (newPath && !isRootPlaceholder) {
         if (isNew) {
-            // Assuming new files are always files, not directories
+            // Assuming new files are always files
             editorRef.current?.handleNewFile(newPath);
-            if (!isEditorVisible) setIsEditorVisible(true); // Also show editor for new files
+            if (!isEditorVisible) setIsEditorVisible(true);
         } else if (looksLikeFile) {
             // Only load content if it looks like a file
             editorRef.current?.loadContent(newPath);
         }
-        // If it doesn't look like a file (i.e., it's a directory), do nothing with the editor
     }
   }, [editorRef, isEditorVisible]);
 

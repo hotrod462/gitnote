@@ -86,13 +86,19 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
   });
 
   const getCurrentTargetDirectory = useCallback(() => {
-    if (!selectedFilePath) {
-      return ''; 
+    // Target root if nothing selected or '.' selected
+    if (!selectedFilePath || selectedFilePath === '.') {
+      return '';
     }
+    // Basic heuristic to check if the selected path looks like a file
+    // Add any other relevant extensions for your project here
     const looksLikeFile = /\.(tsx|ts|js|jsx|md|json|html|css|gitignore|env|example|lock|mjs)$/i.test(selectedFilePath);
+
     if (looksLikeFile) {
+      // If it looks like a file, use its parent directory
       return getParentDirectory(selectedFilePath);
     } else {
+      // Otherwise, assume it's a directory and upload directly into it
       return selectedFilePath;
     }
   }, [selectedFilePath]);

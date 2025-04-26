@@ -46,6 +46,28 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   onFileDrop,
   isOuterDragActive
 }) => {
+  if (item.path === '.') {
+    return (
+      <li key="." className="group relative">
+         <div className={`flex items-center justify-between w-full rounded hover:bg-accent pr-1 ${selectedFilePath === '.' ? 'bg-accent font-medium' : ''}`}>
+           <button
+             onClick={() => onFileClick({ path: '.' })}
+             className={`flex flex-grow items-center space-x-1 p-1 text-left text-base`}
+           >
+             {/* No indent for root */}
+             <span className="flex items-center space-x-1 flex-grow min-w-0">
+               {/* No chevron for root */}
+               <span className="inline-block w-[16px]"></span> 
+               <Folder size={16} className="text-sky-600" />
+               <span className="truncate flex-shrink min-w-0">{item.name}</span>
+             </span>
+           </button>
+           {/* No dropdown menu for root */}
+         </div>
+      </li>
+    );
+  }
+
   const isExpanded = expandedFolders.has(item.path);
   const isLoading = loadingFolders.has(item.path);
   const children = childrenCache[item.path];

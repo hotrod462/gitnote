@@ -6,6 +6,14 @@ import { getFileTree } from '@/lib/actions/githubApi';
 import type { FileTreeItem } from '@/lib/actions/github/fileTree'; // Import type directly
 import { useToast } from "@/hooks/use-toast"; // Toast might be needed for fetch errors here
 
+// Define the static root item
+const rootItem: FileTreeItem = {
+    name: '.',
+    path: '.', // Use '.' for UI selection/key
+    type: 'dir',
+    sha: '__root__' // Unique identifier
+};
+
 // Props for the hook (currently none, but might add later)
 interface UseFileTreeDataProps {}
 
@@ -24,7 +32,7 @@ export interface UseFileTreeDataReturn {
 }
 
 export function useFileTreeData(props: UseFileTreeDataProps = {}): UseFileTreeDataReturn {
-    const [treeData, setTreeData] = useState<FileTreeItem[]>([]);
+    const [treeData, setTreeData] = useState<FileTreeItem[]>([rootItem]); // Initialize with root item
     const [childrenCache, setChildrenCache] = useState<Record<string, FileTreeItem[]>>({});
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
     const [loadingFolders, setLoadingFolders] = useState<Set<string>>(new Set());
@@ -38,12 +46,14 @@ export function useFileTreeData(props: UseFileTreeDataProps = {}): UseFileTreeDa
             console.log("[Hook] Loading initial tree...");
             setIsInitialLoading(true);
             setError(null);
+            // Reset other states if needed, keep root item in treeData
+            setTreeData([rootItem]);
             setLoadingFolders(new Set());
             setExpandedFolders(new Set());
             setChildrenCache({});
             try {
-                const rootItems = await getFileTree(''); 
-                setTreeData(rootItems);
+                const rootApiItems = await getFileTree(''); // Fetch actual root content
+                setTreeData([rootItem, ...rootApiItems]); // Prepend root item to fetched data
                 console.log("[Hook] Initial tree loaded.");
             } catch (err: unknown) {
                 console.error("[Hook] Failed to load initial file tree:", err);
@@ -59,6 +69,7 @@ export function useFileTreeData(props: UseFileTreeDataProps = {}): UseFileTreeDa
 
     // Function to handle folder toggle and fetch children if needed
     const handleFolderToggle = useCallback(async (path: string) => {
+        if (path === '.') return; // Don't toggle the static root
         console.log(`[Hook] Toggling folder: ${path}`);
         const isCurrentlyExpanded = expandedFolders.has(path);
         const newExpandedFolders = new Set(expandedFolders);
@@ -91,26 +102,36 @@ export function useFileTreeData(props: UseFileTreeDataProps = {}): UseFileTreeDa
         setExpandedFolders(newExpandedFolders);
     }, [expandedFolders, childrenCache, loadingFolders, toast]); // Keep toast dependency
 
-     // Function to fetch and update a specific directory's content (e.g., after create/delete)
+     // Function to fetch and update a specific directory's content
      const fetchAndUpdateDirectory = useCallback(async (dirPath: string) => {
         console.log(`[Hook] Fetching and updating directory: ${dirPath}`);
-        setLoadingFolders((prev) => new Set(prev).add(dirPath));
+        // Use empty string for API call when dirPath is '.' or ''
+        const apiPath = (dirPath === '.' || dirPath === '') ? '' : dirPath;
+        
+        // Decide which loading state to use (folder or initial if root)
+        const targetLoadingPath = apiPath === '' ? '__root_loading__' : dirPath; // Use a placeholder for root loading state
+        setLoadingFolders((prev) => new Set(prev).add(targetLoadingPath));
+
          try {
-           const childrenItems = await getFileTree(dirPath);
-           setChildrenCache((prev) => ({ ...prev, [dirPath]: childrenItems }));
-            // If updating root, update treeData directly
-            if (dirPath === '') {
-                setTreeData(childrenItems);
+           const childrenItems = await getFileTree(apiPath);
+           if (apiPath === '') {
+                // If updating root, update treeData directly, keeping root item
+                setTreeData([rootItem, ...childrenItems]);
+                setChildrenCache({}); // Clear cache as root changed
+                setExpandedFolders(new Set()); // Collapse all
+            } else {
+                // If updating a subdirectory, update the cache
+                 setChildrenCache((prev) => ({ ...prev, [dirPath]: childrenItems }));
             }
             console.log(`[Hook] Directory updated: ${dirPath}`);
          } catch (err: unknown) {
-           console.error(`[Hook] Failed to fetch and update directory ${dirPath}:`, err);
-           const message = err instanceof Error ? err.message : 'Please try again.';
-           toast({ title: "Error Updating Directory", description: `Could not refresh "${dirPath}". ${message}`, variant: "destructive" });
+             console.error(`[Hook] Failed to fetch and update directory ${dirPath}:`, err);
+             const message = err instanceof Error ? err.message : 'Please try again.';
+             toast({ title: "Error Updating Directory", description: `Could not refresh "${dirPath}". ${message}`, variant: "destructive" });
          } finally {
            setLoadingFolders((prev) => {
              const next = new Set(prev);
-             next.delete(dirPath);
+             next.delete(targetLoadingPath);
              return next;
            });
          }

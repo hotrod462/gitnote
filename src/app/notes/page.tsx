@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import CommitMessageModal from '@/components/CommitMessageModal';
 import { useFileStagingAndCommit } from '@/hooks/useFileStagingAndCommit';
+import { PanelRightOpen } from 'lucide-react';
 
 // Simplify view modes
 type ViewMode = 'edit' | 'history_view';
@@ -38,6 +39,7 @@ export default function NotesPage() {
   const router = useRouter();
   const editorRef = useRef<EditorRef>(null);
   const [fileTreeKey, setFileTreeKey] = useState(Date.now());
+  const [isEditorVisible, setIsEditorVisible] = useState(false);
 
   const {
       stagedFiles,
@@ -99,7 +101,11 @@ export default function NotesPage() {
     setViewMode('edit');
     setHistoricalCommitSha(null);
     setSelectedFile({ path: newPath, isNew });
-    setCurrentFileSha(null); 
+    setCurrentFileSha(null);
+
+    if (newPath && !isEditorVisible) {
+        setIsEditorVisible(true);
+    }
 
     if (newPath) {
         if (isNew) {
@@ -108,7 +114,7 @@ export default function NotesPage() {
             editorRef.current?.loadContent(newPath);
         }
     }
-  }, [editorRef]);
+  }, [editorRef, isEditorVisible]);
 
   const handleContentLoaded = useCallback((sha: string) => {
     setCurrentFileSha(sha);
@@ -167,6 +173,14 @@ export default function NotesPage() {
         <header className="flex justify-between items-center p-4 border-b">
           <h1 className="text-xl font-bold">GitNote - {connection.repoFullName}</h1>
           <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setIsEditorVisible(!isEditorVisible)} 
+              title={isEditorVisible ? "Hide Editor" : "Show Editor"}
+            >
+              <PanelRightOpen className="h-5 w-5" /> 
+            </Button>
             <ThemeToggleButton />
             <form action={handleSignOut}>
               <Button type="submit" variant="outline">Sign Out</Button>
@@ -174,8 +188,15 @@ export default function NotesPage() {
           </div>
         </header>
         <div className="flex-1 flex flex-col min-h-0">
-          <ResizablePanelGroup direction="horizontal" className="flex-grow">
-            <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
+          <ResizablePanelGroup 
+            direction="horizontal" 
+            className="flex-grow"
+          >
+            <ResizablePanel 
+              defaultSize={isEditorVisible ? 50 : 100} 
+              minSize={isEditorVisible ? 15 : 100}
+              order={1}
+            >
               <div className="h-full overflow-auto p-2">
                 <FileTree
                   key={fileTreeKey}
@@ -185,23 +206,31 @@ export default function NotesPage() {
                 />
               </div>
             </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={75}>
-              <div className="h-full">
-                <Editor
-                  ref={editorRef}
-                  selectedFilePath={selectedFile?.path}
-                  isNewFile={selectedFile?.isNew}
-                  currentFileSha={currentFileSha}
-                  onContentLoaded={handleContentLoaded}
-                  repoFullName={connection.repoFullName}
-                  viewMode={viewMode}
-                  historicalCommitSha={historicalCommitSha}
-                  onExitHistoryView={handleExitHistoryView}
-                  onEnterHistoryViewRequest={handleEnterHistoryView}
-                />
-              </div>
-            </ResizablePanel>
+            {isEditorVisible && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel 
+                  defaultSize={50} 
+                  minSize={0}
+                  order={2}
+                >
+                  <div className="h-full">
+                    <Editor
+                      ref={editorRef}
+                      selectedFilePath={selectedFile?.path}
+                      isNewFile={selectedFile?.isNew}
+                      currentFileSha={currentFileSha}
+                      onContentLoaded={handleContentLoaded}
+                      repoFullName={connection.repoFullName}
+                      viewMode={viewMode}
+                      historicalCommitSha={historicalCommitSha}
+                      onExitHistoryView={handleExitHistoryView}
+                      onEnterHistoryViewRequest={handleEnterHistoryView}
+                    />
+                  </div>
+                </ResizablePanel>
+              </>
+            )}
           </ResizablePanelGroup>
           {stagedFiles.size > 0 && (
             <div className="p-4 border-t bg-background flex-shrink-0">

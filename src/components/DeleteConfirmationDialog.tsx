@@ -12,7 +12,7 @@ import {
   AlertDialogTitle 
 } from "@/components/ui/alert-dialog";
 import { Loader2 } from 'lucide-react';
-import type { FileTreeItem } from '@/lib/actions/githubApi'; // Import type
+import type { FileTreeItem } from '@/lib/actions/github/fileTree';
 
 interface DeleteConfirmationDialogProps {
   open: boolean;

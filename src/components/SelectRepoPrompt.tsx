@@ -6,7 +6,18 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { getInstallationRepositories, saveRepositorySelection, type Repository } from '@/lib/actions/githubConnections';
 import { Skeleton } from "@/components/ui/skeleton"
-import { AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog"
+// Remove unused AlertDialog imports
+// import {
+//   AlertDialog,
+//   AlertDialogAction,
+//   AlertDialogCancel,
+//   AlertDialogContent,
+//   AlertDialogDescription,
+//   AlertDialogFooter,
+//   AlertDialogHeader,
+//   AlertDialogTitle,
+//   AlertDialogTrigger,
+// } from "@/components/ui/alert-dialog";
 
 interface SelectRepoPromptProps {
   installationId: number;

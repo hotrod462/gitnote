@@ -14,7 +14,10 @@ import CommitMessageModal from '@/components/CommitMessageModal'; // Use default
 import { toast } from 'sonner'; // Import toast
 import { Button } from '@/components/ui/button';
 import { Markdown } from 'tiptap-markdown';
-import posthog from 'posthog-js'; // Import PostHog
+// import posthog from 'posthog-js'; // Old import
+import { usePostHog } from 'posthog-js/react';
+// import type { CommitInfo } from '@/lib/actions/github/commitOperations';
+// import { useDebouncedCallback } from 'use-debounce';
 
 // Define possible view modes
 type ViewMode = 'edit' | 'history_view';
@@ -63,7 +66,7 @@ const Editor = forwardRef<EditorRef, EditorProps>((
   const [error, setError] = useState<string | null>(null);
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
   const [externalChangeDetected, setExternalChangeDetected] = useState(false);
-  const [isCheckingSha, setIsCheckingSha] = useState(false);
+  const posthog = usePostHog(); // Get posthog instance from hook
 
   const debouncedSave = useRef<
     ReturnType<typeof debounce<(content: string) => void>> | undefined
@@ -272,12 +275,11 @@ const Editor = forwardRef<EditorRef, EditorProps>((
         }
 
         // Only check for external changes if in edit mode and not currently checking
-        if (viewMode !== 'edit' || !selectedFilePath || isNewFile || !editor || isCheckingSha || !currentFileSha) {
+        if (viewMode !== 'edit' || !selectedFilePath || isNewFile || !editor) {
             return;
         }
 
         console.log('Page became visible, checking for external changes...');
-        setIsCheckingSha(true);
         try {
             const result = await getLatestFileSha(selectedFilePath);
             if (result.sha && result.sha !== currentFileSha) {
@@ -288,8 +290,6 @@ const Editor = forwardRef<EditorRef, EditorProps>((
             }
         } catch (err) {
             console.error('Unexpected error during SHA check:', err);
-        } finally {
-            setIsCheckingSha(false);
         }
     };
 
@@ -298,7 +298,7 @@ const Editor = forwardRef<EditorRef, EditorProps>((
     return () => {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [selectedFilePath, currentFileSha, isNewFile, editor, isCheckingSha, viewMode]); // Include viewMode
+  }, [selectedFilePath, currentFileSha, isNewFile, editor, viewMode]); // Include viewMode
 
   // Function to handle refresh request
   const handleRefreshContent = () => {
@@ -318,24 +318,8 @@ const Editor = forwardRef<EditorRef, EditorProps>((
       toast.error("Cannot save: Editor not ready or not in edit mode.");
       return;
     }
-    // Save Markdown to IndexedDB before showing modal
-    try {
-        const markdownContent = editor.storage.markdown.getMarkdown();
-        console.log("[handleRequestSave] Got Markdown from editor:", markdownContent.substring(0, 100) + "...");
-        console.log("[handleRequestSave] Forcing save to IDB before modal...");
-        idbSet(selectedFilePath, markdownContent)
-            .then(() => {
-              console.log(`[handleRequestSave] Markdown content for ${selectedFilePath} saved to IndexedDB before opening modal.`);
-              setIsCommitModalOpen(true); // Open modal only after IDB save succeeds
-            })
-            .catch(err => {
-              console.error(`Failed to save Markdown to IndexedDB before opening modal for ${selectedFilePath}:`, err);
-              toast.error("Failed to save content locally before committing.");
-            });
-    } catch (error) {
-        console.error("Error getting markdown for save request:", error);
-        toast.error("Could not get current Markdown content to save.");
-    }
+    posthog?.capture('save_requested', { file_path: selectedFilePath });
+    setIsCommitModalOpen(true);
   };
 
   // Function to confirm save and call server action

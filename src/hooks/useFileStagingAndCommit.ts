@@ -3,7 +3,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import * as Diff from 'diff';
-import { getFileContent, commitMultipleFiles } from '@/lib/actions/githubApi';
+import { getFileContent } from '@/lib/actions/github/fileContent';
+import { commitMultipleFiles } from '@/lib/actions/github/commitOperations';
 import type { StagedFileCommitDetails } from '@/lib/actions/github/commitOperations'; // Import type directly
 
 // Input type expected by the hook

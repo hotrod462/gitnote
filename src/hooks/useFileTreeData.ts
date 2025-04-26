@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+// Fix import paths
 // import { getFileTree, type FileTreeItem } from '@/lib/actions/githubApi';
-import { getFileTree } from '@/lib/actions/githubApi';
-import type { FileTreeItem } from '@/lib/actions/github/fileTree'; // Import type directly
+// import { getFileTree } from '@/lib/actions/githubApi';
+import { getFileTree, type FileTreeItem } from '@/lib/actions/github/fileTree'; // Correct path
 import { useToast } from "@/hooks/use-toast"; // Toast might be needed for fetch errors here
 
 // Define the static root item
@@ -13,9 +14,6 @@ const rootItem: FileTreeItem = {
     type: 'dir',
     sha: '__root__' // Unique identifier
 };
-
-// Props for the hook (currently none, but might add later)
-interface UseFileTreeDataProps {}
 
 // Return type of the hook
 export interface UseFileTreeDataReturn {
@@ -31,7 +29,7 @@ export interface UseFileTreeDataReturn {
     setChildrenCache: React.Dispatch<React.SetStateAction<Record<string, FileTreeItem[]>>>; // Needed for optimistic updates
 }
 
-export function useFileTreeData(props: UseFileTreeDataProps = {}): UseFileTreeDataReturn {
+export function useFileTreeData(/* props: UseFileTreeDataProps = {} */): UseFileTreeDataReturn {
     const [treeData, setTreeData] = useState<FileTreeItem[]>([rootItem]); // Initialize with root item
     const [childrenCache, setChildrenCache] = useState<Record<string, FileTreeItem[]>>({});
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());

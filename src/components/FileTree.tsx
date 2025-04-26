@@ -1,22 +1,13 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getFileTree, createFolder, createOrUpdateFile, deleteFile, renameFile } from '@/lib/actions/githubApi';
-import type { FileTreeItem } from '@/lib/actions/github/fileTree';
+import React, { useCallback, useRef } from 'react';
+// import { getFileTree } from '@/lib/actions/githubApi';
 import { Skeleton } from "@/components/ui/skeleton";
-import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
+import { FilePlus, FolderPlus } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu";
 import CreateItemDialog from './CreateItemDialog';
 import DeleteConfirmationDialog from './DeleteConfirmationDialog';
 import RenameDialog from './RenameDialog';
-import posthog from 'posthog-js';
 import { useDropzone } from 'react-dropzone'
 import RenderTreeItem from './RenderTreeItem';
 import { useFileTreeDialogs } from '@/hooks/useFileTreeDialogs';
@@ -46,7 +37,6 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
     expandedFolders,
     loadingFolders,
     isInitialLoading,
-    error,
     handleFolderToggle,
     fetchAndUpdateDirectory,
     setTreeData,

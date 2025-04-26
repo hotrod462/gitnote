@@ -11,10 +11,12 @@ import {
   DialogFooter, 
   DialogClose 
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from 'lucide-react';
-import { Textarea } from "@/components/ui/textarea";
+// Remove unused imports
+// import { useToast } from '@/components/ui/use-toast';
+// import { usePostHog } from 'posthog-js/react';
 
 interface CommitMessageModalProps {
   open: boolean;
@@ -26,6 +28,10 @@ interface CommitMessageModalProps {
   isLoading?: boolean; // Optional loading state
   stagedFilePaths?: string[]; // Optional list of staged files for display
   isFetchingMessage?: boolean; // Add prop for message fetching state
+  // Remove unused props
+  // repoName: string;
+  // owner: string;
+  // commitSha: string;
 }
 
 export default function CommitMessageModal({ 
@@ -37,7 +43,11 @@ export default function CommitMessageModal({
   title = 'Save Draft', // Default title
   isLoading = false,
   stagedFilePaths = [], // Default to empty array
-  isFetchingMessage = false // Default to false
+  isFetchingMessage = false, // Default to false
+  // Remove unused props from destructuring
+  // repoName,
+  // owner,
+  // commitSha
 }: CommitMessageModalProps) {
   const [commitMessage, setCommitMessage] = useState('');
   const [isCommitting, setIsCommitting] = useState(isLoading);

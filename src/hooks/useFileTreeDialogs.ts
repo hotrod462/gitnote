@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { FileTreeItem, createFolder, createOrUpdateFile, deleteFile, renameFile, getFileTree } from '@/lib/actions/githubApi';
+import { getFileTree, type FileTreeItem } from '@/lib/actions/github/fileTree';
+import { createFolder, createOrUpdateFile, deleteFile, renameFile } from '@/lib/actions/github/fileOperations';
 import posthog from 'posthog-js';
 
 // Helper function (copied from FileTree.tsx for now, might centralize later)

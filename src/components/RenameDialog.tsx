@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from 'lucide-react';
-import type { FileTreeItem } from '@/lib/actions/githubApi'; // Import type
+import type { FileTreeItem } from '@/lib/actions/github/fileTree'; // Fix the import path
 
 interface RenameDialogProps {
   open: boolean;

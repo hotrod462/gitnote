@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/popover";
 import { Button } from '@/components/ui/button';
 import { Clock, Loader2, AlertTriangle } from 'lucide-react';
-import { getCommitsForFile, CommitInfo } from '@/lib/actions/githubApi';
+import { getCommitsForFile, type CommitInfo } from '@/lib/actions/github/commitOperations';
 import { formatDistanceToNow } from 'date-fns'; 
 import Link from 'next/link';
 

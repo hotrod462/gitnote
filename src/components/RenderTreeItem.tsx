@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useRef } from 'react'; // Add useRef
+import React from 'react'; // Keep React
 // import { FileTreeItem } from '@/lib/actions/githubApi';
 import type { FileTreeItem } from '@/lib/actions/github/fileTree'; // Import type directly
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,6 +74,7 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   const indentStyle = { paddingLeft: `${level * 1.25}rem` };
 
   const isFolder = item.type === 'dir';
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const { getRootProps, isDragActive } = useDropzone({
     onDrop: (acceptedFiles, _fileRejections, event: DropEvent) => {
       if (event && typeof (event as React.DragEvent).stopPropagation === 'function') {

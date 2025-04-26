@@ -128,11 +128,11 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
            </Button>
         </div>
       </div>
-      <div className="flex-grow overflow-auto py-1 pr-1">
+      <div className="flex-grow overflow-auto py-1 pr-1 flex justify-center">
         {treeData.length === 0 && !isInitialLoading && (
          <p className="text-muted-foreground px-2 text-sm">Repository is empty.</p>
         )}
-        <ul ref={fileListRef} className="space-y-1">
+        <ul ref={fileListRef} className="space-y-1 inline-block">
           {treeData.map((item) => (
             <RenderTreeItem
               key={item.path}

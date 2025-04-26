@@ -95,7 +95,7 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
       <div className="flex items-center justify-between w-full rounded hover:bg-accent pr-1">
         <button
           onClick={handleItemClick}
-          className={`flex flex-grow items-center space-x-1 p-1 text-left text-sm ${selectedFilePath === item.path ? 'bg-accent font-medium rounded' : ''}`}
+          className={`flex flex-grow items-center space-x-1 p-1 text-left text-base ${selectedFilePath === item.path ? 'bg-accent font-medium rounded' : ''}`}
         >
           <span style={indentStyle} className="flex items-center space-x-1 flex-grow min-w-0">
             {item.type === 'dir' ? (

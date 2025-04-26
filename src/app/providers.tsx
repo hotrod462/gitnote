@@ -13,7 +13,7 @@ if (typeof window !== 'undefined') {
     posthog.init(posthogKey, {
       api_host: posthogHost,
       capture_pageview: false, // Disable automatic pageview capture, handle manually if needed
-      autocapture: false, // *** Explicitly disable autocapture ***
+      autocapture: true, // *** Explicitly enable autocapture ***
       loaded: (posthog) => {
         // Ensure feature flags are loaded on init
         // This is useful if you plan to use PostHog feature flags later

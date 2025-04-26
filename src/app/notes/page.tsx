@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import CommitMessageModal from '@/components/CommitMessageModal';
 import { useFileStagingAndCommit } from '@/hooks/useFileStagingAndCommit';
 import { PanelRightOpen } from 'lucide-react';
+import { usePostHog } from 'posthog-js/react';
 
 // Simplify view modes
 type ViewMode = 'edit' | 'history_view';
@@ -40,6 +41,7 @@ export default function NotesPage() {
   const editorRef = useRef<EditorRef>(null);
   const [fileTreeKey, setFileTreeKey] = useState(Date.now());
   const [isEditorVisible, setIsEditorVisible] = useState(false);
+  const posthog = usePostHog();
 
   const {
       stagedFiles,
@@ -56,6 +58,7 @@ export default function NotesPage() {
     onCommitSuccess: () => {
       console.log('[NotesPage] Commit successful, updating FileTree key.');
       setFileTreeKey(Date.now());
+      posthog.capture('commit_success', { count: stagedFiles.size });
     }
   });
 
@@ -80,6 +83,15 @@ export default function NotesPage() {
   useEffect(() => {
     fetchConnectionStatus();
   }, [fetchConnectionStatus]); // Dependency: the fetch function itself
+
+  // PostHog Pageview Tracking
+  useEffect(() => {
+    posthog.capture('$pageview');
+    // Track pageleave on unmount
+    return () => {
+      posthog.capture('$pageleave');
+    };
+  }, [posthog]); // Dependency: posthog instance
 
   // Handler for successful repository selection
   const handleRepoSelected = useCallback(() => {
@@ -173,21 +185,13 @@ export default function NotesPage() {
         <header className="flex justify-between items-center p-4 border-b">
           <h1 className="text-xl font-bold">GitNote - {connection.repoFullName}</h1>
           <div className="flex items-center gap-2">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => setIsEditorVisible(!isEditorVisible)} 
-              title={isEditorVisible ? "Hide Editor" : "Show Editor"}
-            >
-              <PanelRightOpen className="h-5 w-5" /> 
-            </Button>
             <ThemeToggleButton />
             <form action={handleSignOut}>
               <Button type="submit" variant="outline">Sign Out</Button>
             </form>
           </div>
         </header>
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-row min-h-0">
           <ResizablePanelGroup 
             direction="horizontal" 
             className="flex-grow"
@@ -197,7 +201,7 @@ export default function NotesPage() {
               minSize={isEditorVisible ? 15 : 100}
               order={1}
             >
-              <div className="h-full overflow-auto p-2">
+              <div className="h-full overflow-auto">
                 <FileTree
                   key={fileTreeKey}
                   selectedFilePath={selectedFile?.path}
@@ -232,37 +236,48 @@ export default function NotesPage() {
               </>
             )}
           </ResizablePanelGroup>
-          {stagedFiles.size > 0 && (
-            <div className="p-4 border-t bg-background flex-shrink-0">
-                <div className='flex justify-between items-center mb-2'>
-                    <h3 className="font-semibold">Staged Files ({stagedFiles.size})</h3>
-                    <Button variant="outline" size="sm" onClick={clearStagedFiles}>
-                        Clear Staged
-                    </Button>
-                </div>
-                <ul className="max-h-32 overflow-y-auto text-sm space-y-1">
-                    {(Array.from(stagedFiles.keys()) as string[]).map((path: string) => (
-                        <li key={path} className="font-mono truncate bg-muted p-1 rounded text-muted-foreground">
-                            {path}
-                        </li>
-                    ))}
-                </ul>
-                <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-sm shadow z-50">
-                   Press Ctrl+S to commit staged files.
-                </div>
-            </div>
-          )}
-          <CommitMessageModal
-             open={commitModalOpen}
-             onOpenChange={setCommitModalOpen}
-             onConfirmCommit={handleConfirmMultiFileCommit}
-             stagedFilePaths={stagedPathsForModal}
-             initialMessage={generatedCommitMsg}
-             title="Commit Staged Files"
-             isLoading={isCommitting}
-             isFetchingMessage={isFetchingCommitMsg}
-           />
+          <div className="flex-shrink-0 w-12 flex flex-col items-center p-2 border-l">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setIsEditorVisible(!isEditorVisible)} 
+              title={isEditorVisible ? "Hide Editor" : "Show Editor"}
+              className="mt-1"
+            >
+              <PanelRightOpen className="h-5 w-5" /> 
+            </Button>
+          </div>
         </div>
+        {stagedFiles.size > 0 && (
+          <div className="p-4 border-t bg-background flex-shrink-0">
+              <div className='flex justify-between items-center mb-2'>
+                  <h3 className="font-semibold">Staged Files ({stagedFiles.size})</h3>
+                  <Button variant="outline" size="sm" onClick={clearStagedFiles}>
+                      Clear Staged
+                  </Button>
+              </div>
+              <ul className="max-h-32 overflow-y-auto text-sm space-y-1">
+                  {(Array.from(stagedFiles.keys()) as string[]).map((path: string) => (
+                      <li key={path} className="font-mono truncate bg-muted p-1 rounded text-muted-foreground">
+                          {path}
+                      </li>
+                  ))}
+              </ul>
+              <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-sm shadow z-50">
+                 Press Ctrl+S to commit staged files.
+              </div>
+          </div>
+        )}
+        <CommitMessageModal
+           open={commitModalOpen}
+           onOpenChange={setCommitModalOpen}
+           onConfirmCommit={handleConfirmMultiFileCommit}
+           stagedFilePaths={stagedPathsForModal}
+           initialMessage={generatedCommitMsg}
+           title="Commit Staged Files"
+           isLoading={isCommitting}
+           isFetchingMessage={isFetchingCommitMsg}
+         />
       </div>
     );
   }

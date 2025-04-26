@@ -129,6 +129,7 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
            </Button>
         </div>
       </div>
+      <p className="px-2 pt-1 text-xs text-muted-foreground">Note: Commits are limited to 1MB total file size.</p>
       <div className="flex-grow overflow-auto py-1 pr-1 flex justify-center">
         {isInitialLoading ? (
           <div className="w-full px-2 py-1 space-y-2 mt-1">

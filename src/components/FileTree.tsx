@@ -1,5 +1,6 @@
 'use client'
 
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getFileTree, type FileTreeItem, createFolder, createOrUpdateFile, deleteFile, renameFile } from '@/lib/actions/githubApi';
 import { Skeleton } from "@/components/ui/skeleton";
@@ -145,6 +146,7 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
               onRequestDelete={handleRequestDelete}
               onRequestRename={handleRequestRename}
               onFileDrop={onFileDrop}
+              isOuterDragActive={isRootDragActive}
             />
           ))}
         </ul>

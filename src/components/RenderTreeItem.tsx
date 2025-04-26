@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react';
+import React, { useRef } from 'react'; // Add useRef
 import { FileTreeItem } from '@/lib/actions/githubApi';
 import { Skeleton } from "@/components/ui/skeleton";
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
@@ -11,7 +11,8 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { useDropzone } from 'react-dropzone';
+import { useDropzone, DropEvent } from 'react-dropzone';
+import { cn } from '@/lib/utils';
 
 // Define props interface (copied from FileTree.tsx)
 interface RenderTreeItemProps {
@@ -26,6 +27,7 @@ interface RenderTreeItemProps {
   onRequestDelete: (item: FileTreeItem) => void;
   onRequestRename: (item: FileTreeItem) => void;
   onFileDrop: (files: File[], targetFolder: string) => void;
+  isOuterDragActive: boolean;
 }
 
 // The RenderTreeItem component logic (copied from FileTree.tsx)
@@ -40,7 +42,8 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   onFileClick,
   onRequestDelete,
   onRequestRename,
-  onFileDrop
+  onFileDrop,
+  isOuterDragActive
 }) => {
   const isExpanded = expandedFolders.has(item.path);
   const isLoading = loadingFolders.has(item.path);
@@ -49,7 +52,11 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
 
   const isFolder = item.type === 'dir';
   const { getRootProps, isDragActive } = useDropzone({
-    onDrop: (acceptedFiles) => { // Removed event param based on previous steps
+    onDrop: (acceptedFiles, _fileRejections, event: DropEvent) => {
+      if (event && typeof (event as React.DragEvent).stopPropagation === 'function') {
+        (event as React.DragEvent).stopPropagation();
+      }
+
       if (isFolder) {
         console.log(`[ITEM DROP HANDLER] Fired for: ${item.path}`);
         onFileDrop(acceptedFiles, item.path);
@@ -138,35 +145,41 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
       </div>
 
       {isExpanded && children && (
-          <ul className="space-y-1 mt-1">
-              {children.length === 0 && (
-                  <li className="text-muted-foreground text-xs" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
-                      Folder is empty
-                  </li>
-              )}
-              {children.map((child) => (
-                  <RenderTreeItem // Recursive call
-                      key={child.path}
-                      item={child}
-                      level={level + 1}
-                      selectedFilePath={selectedFilePath}
-                      expandedFolders={expandedFolders}
-                      loadingFolders={loadingFolders}
-                      childrenCache={childrenCache}
-                      onFolderToggle={onFolderToggle}
-                      onFileClick={onFileClick}
-                      onRequestDelete={onRequestDelete}
-                      onRequestRename={onRequestRename}
-                      onFileDrop={onFileDrop}
-                  />
-              ))}
-          </ul>
+        <ul 
+          className={cn(
+            "ml-6 pl-2 border-l border-gray-200 dark:border-gray-700 space-y-1",
+            isOuterDragActive && "pointer-events-none"
+          )}
+        >
+          {children.length === 0 && (
+            <li className="text-muted-foreground text-xs" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
+              Folder is empty
+            </li>
+          )}
+          {children.map((child) => (
+            <RenderTreeItem
+              key={child.path}
+              item={child}
+              level={level + 1}
+              selectedFilePath={selectedFilePath}
+              expandedFolders={expandedFolders}
+              loadingFolders={loadingFolders}
+              childrenCache={childrenCache}
+              onFolderToggle={onFolderToggle}
+              onFileClick={onFileClick}
+              onRequestDelete={onRequestDelete}
+              onRequestRename={onRequestRename}
+              onFileDrop={onFileDrop}
+              isOuterDragActive={isOuterDragActive}
+            />
+          ))}
+        </ul>
       )}
       {isExpanded && isLoading && (
-          <div className="space-y-1 pl-4 mt-1" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
-              <Skeleton className="h-4 w-10/12" />
-              <Skeleton className="h-4 w-8/12" />
-          </div>
+        <div className="space-y-1 pl-4 mt-1" style={{ paddingLeft: `${(level + 1) * 1.25}rem` }}>
+          <Skeleton className="h-4 w-10/12" />
+          <Skeleton className="h-4 w-8/12" />
+        </div>
       )}
     </li>
   );

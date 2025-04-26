@@ -143,7 +143,7 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
         ) : treeData.length === 0 ? (
           <p className="text-muted-foreground px-2 text-sm mt-4">Repository is empty.</p>
         ) : (
-          <ul ref={fileListRef} className="space-y-1 inline-block w-full">
+          <ul ref={fileListRef} className="space-y-1 inline-block">
             {treeData.map((item) => (
               <RenderTreeItem
                 key={item.path}

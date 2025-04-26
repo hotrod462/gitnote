@@ -50,7 +50,12 @@ export default function Home() {
         </p>
       </div>
       <form action={signInWithGithub}>
-        <Button type="submit" variant="outline" size="lg">
+        <Button 
+          type="submit" 
+          variant="outline" 
+          size="lg"
+          className="dark:bg-white dark:text-black dark:hover:bg-gray-200"
+        >
           {/* Optional: Add GitHub icon later */}
           Sign In with GitHub
         </Button>

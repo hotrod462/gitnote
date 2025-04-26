@@ -82,6 +82,7 @@ const RenderTreeItem: React.FC<RenderTreeItemProps> = React.memo(({
   const handleItemClick = () => {
     if (item.type === 'dir') {
       onFolderToggle(item.path);
+      onFileClick({ path: item.path });
     } else {
       onFileClick({ path: item.path, isNew: false });
     }

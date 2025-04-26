@@ -1,9 +1,8 @@
 'use client'
 
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getFileTree, createFolder, createOrUpdateFile, deleteFile, renameFile } from '@/lib/actions/githubApi';
-import type { FileTreeItem } from '@/lib/actions/github/fileTree'; // Import type directly
+import type { FileTreeItem } from '@/lib/actions/github/fileTree';
 import { Skeleton } from "@/components/ui/skeleton";
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, Loader2, FilePlus, FolderPlus, MoreHorizontal, Trash2, Pencil } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -22,6 +21,7 @@ import { useDropzone } from 'react-dropzone'
 import RenderTreeItem from './RenderTreeItem';
 import { useFileTreeDialogs } from '@/hooks/useFileTreeDialogs';
 import { useFileTreeData } from '@/hooks/useFileTreeData';
+import FileUploadButton from './FileUploadButton';
 
 // Define props interface
 interface FileTreeProps {
@@ -30,39 +30,31 @@ interface FileTreeProps {
   onFileDrop: (files: File[], targetFolder: string) => void;
 }
 
-
 // Helper function to get parent directory
 const getParentDirectory = (filePath: string | null): string => {
-  if (!filePath) return ''; // Root if no file selected
+  if (!filePath) return '';
   const lastSlash = filePath.lastIndexOf('/');
-  if (lastSlash === -1) return ''; // Root if file is in root
+  if (lastSlash === -1) return '';
   return filePath.substring(0, lastSlash);
 };
 
 // Main FileTree component
 export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }: FileTreeProps) {
-  // === Use the Tree Data Hook ===
   const {
     treeData,
     childrenCache,
     expandedFolders,
     loadingFolders,
     isInitialLoading,
-    error, // You might want to display this error state somewhere
+    error,
     handleFolderToggle,
     fetchAndUpdateDirectory,
     setTreeData,
     setChildrenCache
-} = useFileTreeData();
-// ============================
+  } = useFileTreeData();
 
   const fileListRef = useRef<HTMLUListElement>(null);
 
-  // Fetch initial root tree data
-  
-
-     
-  // === Use the Dialog Hook (Moved after function definitions) ===
   const {
       isCreateDialogOpen,
       isDeleteDialogOpen,
@@ -88,20 +80,29 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
       treeData,
       childrenCache,
       onFileSelect,
-      onDirectoryUpdateNeeded: fetchAndUpdateDirectory, // Use the function defined earlier
+      onDirectoryUpdateNeeded: fetchAndUpdateDirectory,
       setTreeDataOptimistic: setTreeData,
       setChildrenCacheOptimistic: setChildrenCache,
   });
-  // =========================
 
-  // Function to handle folder toggle and fetch children if needed
-  
+  const getCurrentTargetDirectory = useCallback(() => {
+    if (!selectedFilePath) {
+      return ''; 
+    }
+    const looksLikeFile = /\.(tsx|ts|js|jsx|md|json|html|css|gitignore|env|example|lock|mjs)$/i.test(selectedFilePath);
+    if (looksLikeFile) {
+      return getParentDirectory(selectedFilePath);
+    } else {
+      return selectedFilePath;
+    }
+  }, [selectedFilePath]);
+
   const handleFileClick = (selection: { path: string; isNew?: boolean }) => {
     onFileSelect(selection);
   };
  
   const { getRootProps: getRootContainerProps, isDragActive: isRootDragActive } = useDropzone({
-    onDrop: (acceptedFiles) => onFileDrop(acceptedFiles, ''), // Root drop adds to base path
+    onDrop: (acceptedFiles) => onFileDrop(acceptedFiles, ''),
     noClick: true,
     noKeyboard: true,
   });
@@ -118,7 +119,13 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
         </div>
       )}
       <div className="flex-shrink-0 flex justify-between items-center p-2 border-b">
-        <h2 className="text-lg font-semibold">Explorer</h2>
+        <div className="flex items-center gap-1">
+          <h2 className="text-lg font-semibold">Explorer</h2>
+          <FileUploadButton 
+            onFileDrop={onFileDrop} 
+            getTargetDirectory={getCurrentTargetDirectory} 
+          />
+        </div>
         <div className="space-x-1">
            <Button variant="ghost" size="icon" onClick={handleRequestCreateFile} title="New File">
               <FilePlus className="h-4 w-4" />
@@ -129,28 +136,39 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
         </div>
       </div>
       <div className="flex-grow overflow-auto py-1 pr-1 flex justify-center">
-        {treeData.length === 0 && !isInitialLoading && (
-         <p className="text-muted-foreground px-2 text-sm">Repository is empty.</p>
+        {isInitialLoading ? (
+          <div className="w-full px-2 py-1 space-y-2 mt-1">
+            <Skeleton className="h-5 w-11/12" />
+            <Skeleton className="h-5 w-10/12" />
+            <Skeleton className="h-5 w-9/12 ml-4" />
+            <Skeleton className="h-5 w-8/12" />
+            <Skeleton className="h-5 w-7/12 ml-4" />
+            <Skeleton className="h-5 w-6/12 ml-4" />
+            <Skeleton className="h-5 w-10/12" />
+          </div>
+        ) : treeData.length === 0 ? (
+          <p className="text-muted-foreground px-2 text-sm mt-4">Repository is empty.</p>
+        ) : (
+          <ul ref={fileListRef} className="space-y-1 inline-block w-full">
+            {treeData.map((item) => (
+              <RenderTreeItem
+                key={item.path}
+                item={item}
+                level={0}
+                selectedFilePath={selectedFilePath}
+                expandedFolders={expandedFolders}
+                loadingFolders={loadingFolders}
+                childrenCache={childrenCache}
+                onFolderToggle={handleFolderToggle}
+                onFileClick={handleFileClick}
+                onRequestDelete={handleRequestDelete}
+                onRequestRename={handleRequestRename}
+                onFileDrop={onFileDrop}
+                isOuterDragActive={isRootDragActive}
+              />
+            ))}
+          </ul>
         )}
-        <ul ref={fileListRef} className="space-y-1 inline-block">
-          {treeData.map((item) => (
-            <RenderTreeItem
-              key={item.path}
-              item={item}
-              level={0}
-              selectedFilePath={selectedFilePath}
-              expandedFolders={expandedFolders}
-              loadingFolders={loadingFolders}
-              childrenCache={childrenCache}
-              onFolderToggle={handleFolderToggle}
-              onFileClick={handleFileClick}
-              onRequestDelete={handleRequestDelete}
-              onRequestRename={handleRequestRename}
-              onFileDrop={onFileDrop}
-              isOuterDragActive={isRootDragActive}
-            />
-          ))}
-        </ul>
       </div>
       <CreateItemDialog 
         open={isCreateDialogOpen}

@@ -109,22 +109,31 @@ export default function NotesPage() {
     const newPath = selection.path || null;
     const isNew = selection.isNew || false;
     console.log('File selected:', { newPath, isNew });
-    
+
     setViewMode('edit');
     setHistoricalCommitSha(null);
     setSelectedFile({ path: newPath, isNew });
     setCurrentFileSha(null);
 
-    if (newPath && !isEditorVisible) {
+    // Basic heuristic to check if the selected path looks like a file
+    // Should match the one in FileTree.tsx
+    const looksLikeFile = newPath && /\.(tsx|ts|js|jsx|md|json|html|css|gitignore|env|example|lock|mjs)$/i.test(newPath);
+
+    // Show editor only when a file-like path is selected
+    if (newPath && looksLikeFile && !isEditorVisible) {
         setIsEditorVisible(true);
     }
 
     if (newPath) {
         if (isNew) {
+            // Assuming new files are always files, not directories
             editorRef.current?.handleNewFile(newPath);
-        } else {
+            if (!isEditorVisible) setIsEditorVisible(true); // Also show editor for new files
+        } else if (looksLikeFile) {
+            // Only load content if it looks like a file
             editorRef.current?.loadContent(newPath);
         }
+        // If it doesn't look like a file (i.e., it's a directory), do nothing with the editor
     }
   }, [editorRef, isEditorVisible]);
 
@@ -236,13 +245,12 @@ export default function NotesPage() {
               </>
             )}
           </ResizablePanelGroup>
-          <div className="flex-shrink-0 w-12 flex flex-col items-center p-2 border-l">
+          <div className="flex-shrink-0 w-12 flex flex-col items-center p-2 border-l space-y-2">
             <Button 
               variant="ghost" 
               size="icon" 
               onClick={() => setIsEditorVisible(!isEditorVisible)} 
               title={isEditorVisible ? "Hide Editor" : "Show Editor"}
-              className="mt-1"
             >
               <PanelRightOpen className="h-5 w-5" /> 
             </Button>
@@ -250,20 +258,35 @@ export default function NotesPage() {
         </div>
         {stagedFiles.size > 0 && (
           <div className="p-4 border-t bg-background flex-shrink-0">
-              <div className='flex justify-between items-center mb-2'>
+              <div className='flex flex-wrap justify-between items-center gap-2 mb-2'>
                   <h3 className="font-semibold">Staged Files ({stagedFiles.size})</h3>
-                  <Button variant="outline" size="sm" onClick={clearStagedFiles}>
-                      Clear Staged
-                  </Button>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={clearStagedFiles}
+                      className="text-red-600 border-red-600/50 hover:text-red-700 hover:bg-red-50 dark:text-red-500 dark:border-red-500/50 dark:hover:text-red-400 dark:hover:bg-red-950"
+                    >
+                        Clear Staged
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setCommitModalOpen(true)} 
+                      disabled={isCommitting || isFetchingCommitMsg}
+                      className="bg-green-100 text-green-900 hover:bg-green-200 dark:bg-green-800 dark:text-green-50 dark:hover:bg-green-700"
+                    >
+                      Commit Staged
+                    </Button>
+                  </div>
               </div>
-              <ul className="max-h-32 overflow-y-auto text-sm space-y-1">
+              <ul className="max-h-32 overflow-y-auto text-sm space-y-1 mb-2">
                   {(Array.from(stagedFiles.keys()) as string[]).map((path: string) => (
                       <li key={path} className="font-mono truncate bg-muted p-1 rounded text-muted-foreground">
                           {path}
                       </li>
                   ))}
               </ul>
-              <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-sm shadow z-50">
+              <div className="hidden sm:block fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1 rounded-md text-sm shadow z-50">
                  Press Ctrl+S to commit staged files.
               </div>
           </div>

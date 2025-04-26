@@ -130,7 +130,7 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
         </div>
       </div>
       <p className="px-2 pt-1 text-xs text-muted-foreground">Note: Commits are limited to 1MB total file size.</p>
-      <div className="flex-grow overflow-auto py-1 pr-1 flex justify-center">
+      <div className="flex-grow overflow-auto py-1 pr-1 flex">
         {isInitialLoading ? (
           <div className="w-full px-2 py-1 space-y-2 mt-1">
             <Skeleton className="h-5 w-11/12" />
@@ -144,7 +144,7 @@ export default function FileTree({ selectedFilePath, onFileSelect, onFileDrop }:
         ) : treeData.length === 0 ? (
           <p className="text-muted-foreground px-2 text-sm mt-4">Repository is empty.</p>
         ) : (
-          <ul ref={fileListRef} className="space-y-1 inline-block">
+          <ul ref={fileListRef} className="space-y-1 w-full">
             {treeData.map((item) => (
               <RenderTreeItem
                 key={item.path}

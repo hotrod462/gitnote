@@ -169,7 +169,7 @@ export default function NotesPage() {
     return (
       <div className="flex flex-col h-screen">
         <header className="flex justify-between items-center p-4 border-b">
-          <h1 className="text-xl font-bold">GitNote</h1>
+          <h1 className="text-xl font-bold">GitSync</h1>
           <Skeleton className="h-8 w-20" />
         </header>
         <div className="flex flex-grow p-4">
@@ -192,7 +192,7 @@ export default function NotesPage() {
     return (
       <div className="flex flex-col h-screen">
         <header className="flex justify-between items-center p-4 border-b">
-          <h1 className="text-xl font-bold">GitNote - {connection.repoFullName}</h1>
+          <h1 className="text-xl font-bold">GitSync - {connection.repoFullName}</h1>
           <div className="flex items-center gap-2">
             <ThemeToggleButton />
             <form action={handleSignOut}>

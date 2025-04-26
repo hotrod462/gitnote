@@ -17,8 +17,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "GitNote",
-  description: "Markdown notes backed by your Git repository.",
+  title: "GitSync",
+  description: "Drag and drop sync your files to your GitHub repo",
 };
 
 export default function RootLayout({

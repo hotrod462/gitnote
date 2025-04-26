@@ -11,15 +11,13 @@ export default function ConnectRepoPrompt() {
 
   return (
     <div className="text-center">
-      <h2 className="text-xl font-semibold mb-3">Connect to GitHub</h2>
-      <p className="mb-2 text-muted-foreground">
-        GitNote uses an existing GitHub repository to store and sync your notes.
+      <h2 className="text-2xl font-semibold mb-4">Connect to GitHub</h2>
+      <p className="text-muted-foreground mb-6 max-w-md text-center">
+        GitSync uses an existing GitHub repository to store and sync your files.
+        Drag and drop sync your files easily.
       </p>
-      <p className="mb-4 text-muted-foreground">
-        <strong className="text-foreground">Please ensure you have a repository ready</strong> (you can create a new one on GitHub if needed) before proceeding.
-      </p>
-      <p className="mb-4 text-muted-foreground">
-        Click below to install the GitNote GitHub App and grant it access to your chosen repository.
+      <p className="text-muted-foreground mb-8 max-w-md text-center">
+        Click below to install the GitSync GitHub App and grant it access to your chosen repository.
       </p>
       <Button asChild>
         {/* Use Next.js Link for client-side navigation to external URL */}

@@ -6,6 +6,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { getInstallationRepositories, saveRepositorySelection, type Repository } from '@/lib/actions/githubConnections';
 import { Skeleton } from "@/components/ui/skeleton"
+import { AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog"
 
 interface SelectRepoPromptProps {
   installationId: number;
@@ -82,9 +83,9 @@ export default function SelectRepoPrompt({ installationId, onSuccess }: SelectRe
       <div className="flex flex-col items-center justify-center h-full p-8">
         <h2 className="text-xl font-semibold mb-4">No Accessible Repositories Found</h2>
         <p className="mb-6 text-muted-foreground text-center">
-          The GitNote GitHub App installation doesn&apos;t have access to any repositories, 
-          or failed to load them. 
-          Please go to your GitHub App settings, grant access to a repository, and then refresh.
+          The GitSync GitHub App installation doesn&apos;t have access to any repositories,
+          or you haven&apos;t granted it access yet. Please configure its repository access
+          on GitHub.
         </p>
         <Button onClick={() => window.location.reload()}>Refresh Page</Button>
       </div>
